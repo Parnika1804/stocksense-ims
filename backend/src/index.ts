@@ -8,6 +8,7 @@ import locationsRouter from './routes/locations';
 import receiptsRouter from './routes/receipts';
 import deliveriesRouter from './routes/deliveries';
 import stockmovesRouter from './routes/stockmoves';
+import adjustmentsRouter from './routes/adjustments';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -26,6 +27,7 @@ app.use('/locations', locationsRouter);
 app.use('/receipts', receiptsRouter);
 app.use('/deliveries', deliveriesRouter);
 app.use('/stockmoves', stockmovesRouter);
+app.use('/adjustments', adjustmentsRouter);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

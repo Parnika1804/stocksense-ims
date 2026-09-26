@@ -10,6 +10,7 @@ import Deliveries from './pages/Deliveries';
 import Products from './pages/Products';
 import MoveHistory from './pages/MoveHistory';
 import Settings from './pages/Settings';
+import Adjustments from './pages/Adjustments';
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="deliveries" element={<Deliveries />} />
             <Route path="products" element={<Products />} />
             <Route path="moves" element={<MoveHistory />} />
+            <Route path="adjustments" element={<Adjustments />} />
             <Route path="settings" element={<Settings />} />
           </Route>
 

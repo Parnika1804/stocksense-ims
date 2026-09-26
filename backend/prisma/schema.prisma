@@ -44,6 +44,7 @@ model Location {
   stockItems StockItem[]
   movesFrom  StockMove[] @relation("MoveFrom")
   movesTo    StockMove[] @relation("MoveTo")
+  adjustments Adjustment[]
 }
 
 model Product {
@@ -60,6 +61,7 @@ model Product {
   receiptLines  ReceiptLine[]
   deliveryLines DeliveryLine[]
   stockMoves    StockMove[]
+  adjustments   Adjustment[]
 }
 
 model StockItem {
@@ -136,4 +138,18 @@ model StockMove {
   product  Product   @relation(fields: [productId], references: [id])
   from     Location? @relation("MoveFrom", fields: [fromLocation], references: [id])
   to       Location? @relation("MoveTo", fields: [toLocation], references: [id])
+}
+
+model Adjustment {
+  id               Int      @id @default(autoincrement())
+  productId        Int
+  locationId       Int
+  previousQuantity Int
+  countedQuantity  Int
+  difference       Int
+  reason           String?
+  createdAt        DateTime @default(now())
+
+  product  Product  @relation(fields: [productId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
 }

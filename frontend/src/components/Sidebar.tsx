@@ -17,6 +17,7 @@ const nav: NavItem[] = [
     children: [
       { label: 'Receipts', to: '/receipts' },
       { label: 'Deliveries', to: '/deliveries' },
+      { label: 'Adjustments', to: '/adjustments' },
     ],
   },
   { label: 'Products', to: '/products', icon: '🏷️' },
