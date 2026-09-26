@@ -40,11 +40,13 @@ model Location {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  warehouse  Warehouse   @relation(fields: [warehouseId], references: [id])
-  stockItems StockItem[]
-  movesFrom  StockMove[] @relation("MoveFrom")
-  movesTo    StockMove[] @relation("MoveTo")
+  warehouse   Warehouse    @relation(fields: [warehouseId], references: [id])
+  stockItems  StockItem[]
+  movesFrom   StockMove[]  @relation("MoveFrom")
+  movesTo     StockMove[]  @relation("MoveTo")
   adjustments Adjustment[]
+  transfersFrom Transfer[] @relation("TransferFrom")
+  transfersTo   Transfer[] @relation("TransferTo")
 }
 
 model Product {
@@ -62,6 +64,7 @@ model Product {
   deliveryLines DeliveryLine[]
   stockMoves    StockMove[]
   adjustments   Adjustment[]
+  transfers     Transfer[]
 }
 
 model StockItem {
@@ -152,4 +155,18 @@ model Adjustment {
 
   product  Product  @relation(fields: [productId], references: [id])
   location Location @relation(fields: [locationId], references: [id])
+}
+
+model Transfer {
+  id             Int      @id @default(autoincrement())
+  productId      Int
+  fromLocationId Int
+  toLocationId   Int
+  quantity       Int
+  reason         String?
+  createdAt      DateTime @default(now())
+
+  product      Product  @relation(fields: [productId], references: [id])
+  fromLocation Location @relation("TransferFrom", fields: [fromLocationId], references: [id])
+  toLocation   Location @relation("TransferTo",   fields: [toLocationId],   references: [id])
 }
