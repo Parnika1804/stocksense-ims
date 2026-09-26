@@ -86,38 +86,38 @@ export default function Adjustments() {
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      <h1 className="text-xl font-semibold text-white">Stock Adjustments</h1>
+    <div className="flex flex-col gap-8 animate-fade-in">
+      <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Stock Adjustments</h1>
 
-      {/* ── Form ── */}
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5 flex flex-col gap-5 max-w-2xl">
-        <p className="text-sm text-slate-400">
-          Enter the physically counted quantity. The system will calculate the difference
-          and update stock accordingly.
+      {/* ── Form card ── */}
+      <div className="bg-[#161b27] border border-[#2a3347] rounded-2xl p-6 flex flex-col gap-5 max-w-2xl shadow-sm">
+        <p className="text-sm text-slate-500 leading-relaxed">
+          Enter the physically counted quantity. The system calculates the difference and updates stock accordingly.
         </p>
 
         {apiErr && <ApiErr msg={apiErr} />}
 
-        {/* Success banner */}
         {lastResult && (
-          <div className={`rounded-lg border px-4 py-3 text-sm flex items-center gap-3 ${
+          <div className={`rounded-xl border px-4 py-3.5 text-sm flex items-center gap-4 animate-fade-in ${
             lastResult.difference === 0
-              ? 'bg-slate-700/40 border-slate-600 text-slate-300'
+              ? 'bg-[#1e2536] border-[#2a3347] text-slate-300'
               : lastResult.difference > 0
-              ? 'bg-green-500/10 border-green-500/30 text-green-300'
-              : 'bg-red-500/10 border-red-500/30 text-red-300'
+              ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-300'
+              : 'bg-red-500/5 border-red-500/20 text-red-300'
           }`}>
-            <span className="text-2xl font-bold tabular-nums">
+            <span className={`text-3xl font-bold tabular-nums shrink-0 ${
+              lastResult.difference === 0 ? 'text-slate-500' : lastResult.difference > 0 ? 'text-emerald-400' : 'text-red-400'
+            }`}>
               {lastResult.difference === 0 ? '±0' : lastResult.difference > 0 ? `+${lastResult.difference}` : lastResult.difference}
             </span>
             <div>
-              <p className="font-medium">
+              <p className="font-semibold">
                 {lastResult.difference === 0
                   ? 'No change — stock already matched.'
                   : `Stock ${lastResult.difference > 0 ? 'increased' : 'decreased'} by ${Math.abs(lastResult.difference)} unit${Math.abs(lastResult.difference) !== 1 ? 's' : ''}.`}
               </p>
-              <p className="text-xs opacity-70 mt-0.5">
-                {lastResult.product.name} @ {lastResult.location.warehouse.name} — {lastResult.location.name}
+              <p className="text-xs opacity-60 mt-0.5">
+                {lastResult.product.name} · {lastResult.location.warehouse.name} — {lastResult.location.name}
                 &nbsp;·&nbsp;{lastResult.previousQuantity} → {lastResult.countedQuantity}
               </p>
             </div>
@@ -129,77 +129,63 @@ export default function Adjustments() {
             <Field label="Product" error={fErrors.productId}>
               <select value={fields.productId} onChange={(e) => set('productId', e.target.value)} className={selectCls()}>
                 <option value={0}>Select product…</option>
-                {products?.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>
-                ))}
+                {products?.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>)}
               </select>
             </Field>
             <Field label="Location" error={fErrors.locationId}>
               <select value={fields.locationId} onChange={(e) => set('locationId', e.target.value)} className={selectCls()}>
                 <option value={0}>Select location…</option>
-                {locations?.map((l) => (
-                  <option key={l.id} value={l.id}>{l.warehouse.name} — {l.name}</option>
-                ))}
+                {locations?.map((l) => <option key={l.id} value={l.id}>{l.warehouse.name} — {l.name}</option>)}
               </select>
             </Field>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Counted Quantity" error={fErrors.countedQuantity}>
-              <input
-                type="number" min={0}
-                value={fields.countedQuantity}
-                onChange={(e) => set('countedQuantity', e.target.value)}
-                className={inputCls(!!fErrors.countedQuantity)}
-              />
+              <input type="number" min={0} value={fields.countedQuantity}
+                onChange={(e) => set('countedQuantity', e.target.value)} className={inputCls(!!fErrors.countedQuantity)} />
             </Field>
             <Field label="Reason (optional)">
-              <input
-                value={fields.reason}
-                onChange={(e) => set('reason', e.target.value)}
-                className={inputCls(false)}
-                placeholder="Cycle count, damage, etc."
-              />
+              <input value={fields.reason} onChange={(e) => set('reason', e.target.value)}
+                className={inputCls(false)} placeholder="Cycle count, damage, etc." />
             </Field>
           </div>
-          <div>
-            <Btn type="submit" disabled={saving}>{saving ? 'Saving…' : 'Submit Adjustment'}</Btn>
-          </div>
+          <div><Btn type="submit" disabled={saving}>{saving ? 'Saving…' : 'Submit Adjustment'}</Btn></div>
         </form>
       </div>
 
-      {/* ── History table ── */}
-      <div className="flex flex-col gap-3">
+      {/* ── History ── */}
+      <div className="flex flex-col gap-4">
         <h2 className="text-base font-semibold text-slate-200">Adjustment History</h2>
         {error && <ApiErr msg={error} />}
         {loading ? (
-          <p className="text-slate-400 text-sm">Loading…</p>
+          <div className="flex flex-col gap-2">
+            {[...Array(3)].map((_, i) => <div key={i} className="h-12 rounded-lg skeleton" />)}
+          </div>
         ) : (
           <Table heads={['Product', 'Location', 'Before', 'After', 'Difference', 'Reason', 'Date']}>
             {!adjustments?.length ? (
               <EmptyRow cols={7} msg="No adjustments yet" />
-            ) : (
-              adjustments.map((a) => (
-                <tr key={a.id} className="hover:bg-slate-700/30">
-                  <Td>
-                    <div className="flex flex-col">
-                      <span className="text-white font-medium">{a.product.name}</span>
-                      <span className="text-xs text-slate-500 font-mono">{a.product.sku}</span>
-                    </div>
-                  </Td>
-                  <Td className="text-slate-400 text-xs">
-                    {a.location.warehouse.name}<br />
-                    <span className="text-slate-300">{a.location.name}</span>
-                  </Td>
-                  <Td className="tabular-nums text-slate-400">{a.previousQuantity}</Td>
-                  <Td className="tabular-nums text-slate-300">{a.countedQuantity}</Td>
-                  <Td><DiffBadge diff={a.difference} /></Td>
-                  <Td className="text-slate-500 text-xs max-w-[160px] truncate">{a.reason ?? '—'}</Td>
-                  <Td className="text-slate-500 text-xs whitespace-nowrap">
-                    {new Date(a.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                  </Td>
-                </tr>
-              ))
-            )}
+            ) : adjustments.map((a) => (
+              <tr key={a.id} className="transition-colors hover:bg-white/[0.02]">
+                <Td>
+                  <div className="flex flex-col">
+                    <span className="font-medium text-slate-100">{a.product.name}</span>
+                    <span className="text-xs text-slate-500 font-mono">{a.product.sku}</span>
+                  </div>
+                </Td>
+                <Td className="text-xs">
+                  <span className="text-slate-500">{a.location.warehouse.name}</span><br />
+                  <span className="text-slate-300">{a.location.name}</span>
+                </Td>
+                <Td className="tabular-nums text-slate-500">{a.previousQuantity}</Td>
+                <Td className="tabular-nums text-slate-300">{a.countedQuantity}</Td>
+                <Td><DiffBadge diff={a.difference} /></Td>
+                <Td className="text-slate-500 text-xs max-w-[160px] truncate">{a.reason ?? '—'}</Td>
+                <Td className="text-slate-500 text-xs whitespace-nowrap">
+                  {new Date(a.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                </Td>
+              </tr>
+            ))}
           </Table>
         )}
       </div>

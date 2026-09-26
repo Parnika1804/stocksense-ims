@@ -1,10 +1,96 @@
 @import "tailwindcss";
 
+/* ── Theme tokens ───────────────────────────────────────────────── */
 :root {
-  color-scheme: light dark;
+  /* Backgrounds */
+  --bg-base:      #0f1117;   /* page background */
+  --bg-surface:   #161b27;   /* cards, sidebar */
+  --bg-elevated:  #1e2536;   /* modals, dropdowns */
+  --bg-muted:     #252d3d;   /* table headers, input bg */
+
+  /* Borders */
+  --border:       #2a3347;
+  --border-focus: #6366f1;   /* indigo */
+
+  /* Primary — deep indigo */
+  --primary:      #6366f1;
+  --primary-hover:#4f46e5;
+  --primary-muted:#6366f1/20;
+
+  /* Accent — teal */
+  --accent:       #14b8a6;
+  --accent-hover: #0d9488;
+
+  /* Semantic */
+  --success:      #22c55e;
+  --warning:      #f59e0b;
+  --danger:       #ef4444;
+  --info:         #38bdf8;
+
+  /* Text */
+  --text-primary:   #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted:     #475569;
+
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ── Scrollbar ─────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #3a4560; }
+
+/* ── Keyframes ─────────────────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+@keyframes count-up {
+  from { opacity: 0.4; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Utility classes ───────────────────────────────────────────── */
+.animate-fade-in  { animation: fade-in  0.2s ease both; }
+.animate-slide-up { animation: slide-up 0.25s ease both; }
+.animate-modal-in { animation: modal-in 0.2s cubic-bezier(0.16,1,0.3,1) both; }
+.animate-count    { animation: count-up 0.3s ease both; }
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-muted) 25%,
+    #2e3a50 50%,
+    var(--bg-muted) 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+/* ── Page transition wrapper ───────────────────────────────────── */
+.page-enter { animation: fade-in 0.2s ease both; }

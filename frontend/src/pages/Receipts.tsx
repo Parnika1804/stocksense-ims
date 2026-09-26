@@ -159,28 +159,29 @@ export default function Receipts() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-white">Receipts</h1>
+        <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Receipts</h1>
         <Btn onClick={openCreate}>+ New Receipt</Btn>
       </div>
 
       {error && <ApiErr msg={error} />}
 
-      {loading ? <p className="text-slate-400 text-sm">Loading…</p> : (
+      {loading ? (
+        <div className="flex flex-col gap-2">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-12 rounded-lg skeleton" />)}
+        </div>
+      ) : (
         <Table heads={['Reference', 'Supplier', 'Lines', 'Status', 'Created', '']}>
           {!receipts?.length ? <EmptyRow cols={6} msg="No receipts yet" /> : receipts.map((r) => (
-            <tr key={r.id} className="hover:bg-slate-700/30">
-              <Td className="font-mono text-xs text-slate-200">{r.reference}</Td>
+            <tr key={r.id} className="transition-colors hover:bg-white/[0.02]">
+              <Td><span className="font-mono text-xs font-medium text-indigo-300">{r.reference}</span></Td>
               <Td className="text-slate-400">{r.supplierId ?? '—'}</Td>
-              <Td>{r.receiptLines.length}</Td>
+              <Td><span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#252d3d] text-xs font-medium text-slate-300">{r.receiptLines.length}</span></Td>
               <Td><StatusBadge status={r.status} /></Td>
-              <Td className="text-slate-400 text-xs">{new Date(r.createdAt).toLocaleDateString()}</Td>
+              <Td className="text-slate-500 text-xs">{new Date(r.createdAt).toLocaleDateString()}</Td>
               <Td>
-                <StatusSelect
-                  status={r.status as DocStatus}
-                  onChange={(next) => handleStatusChange(r, next)}
-                />
+                <StatusSelect status={r.status as DocStatus} onChange={(next) => handleStatusChange(r, next)} />
               </Td>
             </tr>
           ))}
@@ -244,10 +245,11 @@ export default function Receipts() {
             {vErr && <ApiErr msg={vErr} />}
             <p className="text-sm text-slate-400">Enter received quantities and destination locations.</p>
             {validateTarget.receiptLines.map((line, i) => (
-              <div key={line.id} className="flex flex-col gap-2 p-3 rounded-lg border border-slate-700 bg-slate-700/30">
-                <span className="text-sm font-medium text-white">{line.product.name}
-                  <span className="ml-2 text-xs text-slate-400">expected: {line.expectedQty}</span>
-                </span>
+              <div key={line.id} className="flex flex-col gap-3 p-4 rounded-xl border border-[#2a3347] bg-[#1e2536]">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-slate-100">{line.product.name}</span>
+                  <span className="text-xs text-slate-500 bg-[#252d3d] px-2 py-0.5 rounded-full">expected: {line.expectedQty}</span>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Received Qty">
                     <input type="number" min={0} value={vLines[i]?.receivedQty ?? 0}

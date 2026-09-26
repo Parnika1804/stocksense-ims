@@ -146,28 +146,29 @@ export default function Deliveries() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-white">Deliveries</h1>
+        <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Deliveries</h1>
         <Btn onClick={openCreate}>+ New Delivery</Btn>
       </div>
 
       {error && <ApiErr msg={error} />}
 
-      {loading ? <p className="text-slate-400 text-sm">Loading…</p> : (
+      {loading ? (
+        <div className="flex flex-col gap-2">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-12 rounded-lg skeleton" />)}
+        </div>
+      ) : (
         <Table heads={['Reference', 'Customer', 'Lines', 'Status', 'Created', '']}>
           {!deliveries?.length ? <EmptyRow cols={6} msg="No deliveries yet" /> : deliveries.map((d) => (
-            <tr key={d.id} className="hover:bg-slate-700/30">
-              <Td className="font-mono text-xs text-slate-200">{d.reference}</Td>
+            <tr key={d.id} className="transition-colors hover:bg-white/[0.02]">
+              <Td><span className="font-mono text-xs font-medium text-indigo-300">{d.reference}</span></Td>
               <Td className="text-slate-400">{d.customerId ?? '—'}</Td>
-              <Td>{d.deliveryLines.length}</Td>
+              <Td><span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#252d3d] text-xs font-medium text-slate-300">{d.deliveryLines.length}</span></Td>
               <Td><StatusBadge status={d.status} /></Td>
-              <Td className="text-slate-400 text-xs">{new Date(d.createdAt).toLocaleDateString()}</Td>
+              <Td className="text-slate-500 text-xs">{new Date(d.createdAt).toLocaleDateString()}</Td>
               <Td>
-                <StatusSelect
-                  status={d.status as DocStatus}
-                  onChange={(next) => handleStatusChange(d, next)}
-                />
+                <StatusSelect status={d.status as DocStatus} onChange={(next) => handleStatusChange(d, next)} />
               </Td>
             </tr>
           ))}
@@ -231,11 +232,11 @@ export default function Deliveries() {
             {vErr && <ApiErr msg={vErr} />}
             <p className="text-sm text-slate-400">Select the source location for each line.</p>
             {validateTarget.deliveryLines.map((line, i) => (
-              <div key={line.id} className="flex flex-col gap-2 p-3 rounded-lg border border-slate-700 bg-slate-700/30">
-                <span className="text-sm font-medium text-white">
-                  {line.product.name}
-                  <span className="ml-2 text-xs text-slate-400">qty: {line.qty}</span>
-                </span>
+              <div key={line.id} className="flex flex-col gap-3 p-4 rounded-xl border border-[#2a3347] bg-[#1e2536]">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-slate-100">{line.product.name}</span>
+                  <span className="text-xs text-slate-500 bg-[#252d3d] px-2 py-0.5 rounded-full">qty: {line.qty}</span>
+                </div>
                 <Field label="Pick from location">
                   <select value={vLines[i]?.locationId ?? 0}
                     onChange={(e) => setVLine(i, e.target.value)} className={selectCls()}>

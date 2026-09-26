@@ -12,6 +12,27 @@ const schema = z.object({
 type Fields = z.infer<typeof schema>;
 type FieldErrors = Partial<Record<keyof Fields, string>>;
 
+// ── Shared auth-page primitives ───────────────────────────────────
+function AuthField({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</label>
+      {children}
+      {error && <p className="text-xs text-red-400 flex items-center gap-1">⚠ {error}</p>}
+    </div>
+  );
+}
+
+function authInput(hasError = false) {
+  return [
+    'w-full rounded-xl border px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600',
+    'bg-[#1e2536] outline-none transition-all duration-150 focus:ring-2',
+    hasError
+      ? 'border-red-500/60 focus:ring-red-500/20 focus:border-red-500'
+      : 'border-[#2a3347] focus:ring-indigo-500/25 focus:border-indigo-500',
+  ].join(' ');
+}
+
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -32,115 +53,91 @@ export default function Login() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setApiError('');
-
     const parsed = schema.safeParse(fields);
     if (!parsed.success) {
       const errs: FieldErrors = {};
-      for (const issue of parsed.error.issues) {
-        errs[issue.path[0] as keyof Fields] = issue.message;
-      }
+      for (const issue of parsed.error.issues) errs[issue.path[0] as keyof Fields] = issue.message;
       setFieldErrors(errs);
       return;
     }
-
     setLoading(true);
     try {
       const data = await apiFetch<{ token: string; user: { id: number; email: string; name: string; role: string } }>(
-        '/auth/login',
-        { method: 'POST', body: JSON.stringify(parsed.data) },
+        '/auth/login', { method: 'POST', body: JSON.stringify(parsed.data) },
       );
       login(data.token, data.user);
       navigate('/');
     } catch (err) {
       setApiError(err instanceof ApiError ? err.message : 'Something went wrong');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <span className="text-4xl">📊</span>
-          <h1 className="mt-2 text-2xl font-bold text-white">StockSense</h1>
-          <p className="text-slate-400 text-sm mt-1">Sign in to your account</p>
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--bg-base)' }}>
+      <div className="w-full max-w-sm animate-slide-up">
+        {/* Logo */}
+        <div className="mb-10 text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-900/40 mb-4">
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+              <path d="M7 10.5h12M7 13h8M7 15.5h5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+              <path d="M16 7l3 3.5-3 3.5" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-100 tracking-tight">StockSense</h1>
+          <p className="text-sm text-slate-500 mt-1">Sign in to your account</p>
         </div>
 
-        <form onSubmit={handleSubmit} noValidate className="bg-slate-800 rounded-xl p-6 flex flex-col gap-5 border border-slate-700">
+        <div className="bg-[#161b27] border border-[#2a3347] rounded-2xl p-7 flex flex-col gap-5 shadow-xl shadow-black/30">
           {successMessage && (
-            <div className="rounded-lg bg-green-500/10 border border-green-500/30 px-3 py-2 text-sm text-green-400">
+            <div className="flex items-center gap-2 rounded-xl bg-emerald-500/5 border border-emerald-500/20 px-4 py-2.5 text-sm text-emerald-400">
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
+              </svg>
               {successMessage}
             </div>
           )}
 
           {apiError && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-2 text-sm text-red-400">
+            <div className="flex items-center gap-2 rounded-xl bg-red-500/5 border border-red-500/20 px-4 py-2.5 text-sm text-red-400">
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              </svg>
               {apiError}
             </div>
           )}
 
-          <Field label="Email" error={fieldErrors.email}>
-            <input
-              type="email"
-              autoComplete="email"
-              value={fields.email}
-              onChange={(e) => set('email', e.target.value)}
-              className={inputClass(!!fieldErrors.email)}
-              placeholder="you@example.com"
-            />
-          </Field>
+          <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+            <AuthField label="Email" error={fieldErrors.email}>
+              <input type="email" autoComplete="email" value={fields.email}
+                onChange={(e) => set('email', e.target.value)}
+                className={authInput(!!fieldErrors.email)} placeholder="you@example.com" />
+            </AuthField>
 
-          <Field label="Password" error={fieldErrors.password}>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={fields.password}
-              onChange={(e) => set('password', e.target.value)}
-              className={inputClass(!!fieldErrors.password)}
-              placeholder="••••••••"
-            />
-          </Field>
+            <AuthField label="Password" error={fieldErrors.password}>
+              <input type="password" autoComplete="current-password" value={fields.password}
+                onChange={(e) => set('password', e.target.value)}
+                className={authInput(!!fieldErrors.password)} placeholder="••••••••" />
+            </AuthField>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
+            <button type="submit" disabled={loading}
+              className="w-full mt-1 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white
+                hover:bg-indigo-500 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed
+                transition-all duration-150 shadow-sm shadow-indigo-900/40">
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
 
-          <div className="flex items-center justify-between text-sm text-slate-400">
+          <div className="flex items-center justify-between pt-1 text-xs text-slate-600">
             <span>
               No account?{' '}
-              <Link to="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
-                Sign up
-              </Link>
+              <Link to="/signup" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">Sign up</Link>
             </span>
-            <Link to="/forgot-password" className="text-blue-400 hover:text-blue-300 font-medium">
+            <Link to="/forgot-password" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
               Forgot password?
             </Link>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
-}
-
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-sm font-medium text-slate-300">{label}</label>
-      {children}
-      {error && <p className="text-xs text-red-400">{error}</p>}
-    </div>
-  );
-}
-
-function inputClass(hasError: boolean) {
-  return `w-full rounded-lg border bg-slate-700 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:ring-2 transition ${
-    hasError
-      ? 'border-red-500 focus:ring-red-500/40'
-      : 'border-slate-600 focus:ring-blue-500/40 focus:border-blue-500'
-  }`;
 }

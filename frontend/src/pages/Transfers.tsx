@@ -92,26 +92,27 @@ export default function Transfers() {
   function locLabel(l: Location) { return `${l.warehouse.name} — ${l.name}`; }
 
   return (
-    <div className="flex flex-col gap-8">
-      <h1 className="text-xl font-semibold text-white">Internal Transfers</h1>
+    <div className="flex flex-col gap-8 animate-fade-in">
+      <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Internal Transfers</h1>
 
-      {/* ── Form ── */}
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5 flex flex-col gap-5 max-w-2xl">
-        <p className="text-sm text-slate-400">
-          Move stock between locations. The transfer will be blocked if the source
-          location does not have enough quantity.
+      {/* ── Form card ── */}
+      <div className="bg-[#161b27] border border-[#2a3347] rounded-2xl p-6 flex flex-col gap-5 max-w-2xl shadow-sm">
+        <p className="text-sm text-slate-500 leading-relaxed">
+          Move stock between locations. Blocked if the source location has insufficient quantity.
         </p>
 
         {apiErr && <ApiErr msg={apiErr} />}
 
         {lastResult && (
-          <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-300 flex items-center gap-3">
-            <span className="text-2xl font-bold tabular-nums">⇄</span>
+          <div className="rounded-xl border border-teal-500/20 bg-teal-500/5 px-4 py-3 text-sm text-teal-300 flex items-center gap-3 animate-fade-in">
+            <svg className="w-5 h-5 shrink-0 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+            </svg>
             <div>
-              <p className="font-medium">
+              <p className="font-semibold">
                 Transferred {lastResult.quantity} unit{lastResult.quantity !== 1 ? 's' : ''} of {lastResult.product.name}
               </p>
-              <p className="text-xs opacity-70 mt-0.5">
+              <p className="text-xs text-teal-400/70 mt-0.5">
                 {locLabel(lastResult.fromLocation)} → {locLabel(lastResult.toLocation)}
               </p>
             </div>
@@ -123,96 +124,72 @@ export default function Transfers() {
             <Field label="Product" error={fErrors.productId}>
               <select value={fields.productId} onChange={(e) => set('productId', e.target.value)} className={selectCls()}>
                 <option value={0}>Select product…</option>
-                {products?.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>
-                ))}
+                {products?.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>)}
               </select>
             </Field>
             <Field label="Quantity" error={fErrors.quantity}>
-              <input
-                type="number" min={1}
-                value={fields.quantity}
-                onChange={(e) => set('quantity', e.target.value)}
-                className={inputCls(!!fErrors.quantity)}
-              />
+              <input type="number" min={1} value={fields.quantity}
+                onChange={(e) => set('quantity', e.target.value)} className={inputCls(!!fErrors.quantity)} />
             </Field>
           </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="From location" error={fErrors.fromLocationId}>
               <select value={fields.fromLocationId} onChange={(e) => set('fromLocationId', e.target.value)} className={selectCls()}>
                 <option value={0}>Select source…</option>
-                {locations?.map((l) => (
-                  <option key={l.id} value={l.id}>{locLabel(l)}</option>
-                ))}
+                {locations?.map((l) => <option key={l.id} value={l.id}>{locLabel(l)}</option>)}
               </select>
             </Field>
             <Field label="To location" error={fErrors.toLocationId}>
               <select value={fields.toLocationId} onChange={(e) => set('toLocationId', e.target.value)} className={selectCls()}>
                 <option value={0}>Select destination…</option>
-                {locations?.map((l) => (
-                  <option key={l.id} value={l.id}>{locLabel(l)}</option>
-                ))}
+                {locations?.map((l) => <option key={l.id} value={l.id}>{locLabel(l)}</option>)}
               </select>
             </Field>
           </div>
-
           <Field label="Reason (optional)">
-            <input
-              value={fields.reason}
-              onChange={(e) => set('reason', e.target.value)}
-              className={inputCls(false)}
-              placeholder="Replenishment, reorganisation, etc."
-            />
+            <input value={fields.reason} onChange={(e) => set('reason', e.target.value)}
+              className={inputCls(false)} placeholder="Replenishment, reorganisation, etc." />
           </Field>
-
-          <div>
-            <Btn type="submit" disabled={saving}>{saving ? 'Transferring…' : 'Submit Transfer'}</Btn>
-          </div>
+          <div><Btn type="submit" disabled={saving}>{saving ? 'Transferring…' : 'Submit Transfer'}</Btn></div>
         </form>
       </div>
 
-      {/* ── History table ── */}
-      <div className="flex flex-col gap-3">
+      {/* ── History ── */}
+      <div className="flex flex-col gap-4">
         <h2 className="text-base font-semibold text-slate-200">Transfer History</h2>
         {error && <ApiErr msg={error} />}
         {loading ? (
-          <p className="text-slate-400 text-sm">Loading…</p>
+          <div className="flex flex-col gap-2">
+            {[...Array(3)].map((_, i) => <div key={i} className="h-12 rounded-lg skeleton" />)}
+          </div>
         ) : (
           <Table heads={['Product', 'From', 'To', 'Qty', 'Status', 'Reason', 'Date']}>
             {!transfers?.length ? (
               <EmptyRow cols={7} msg="No transfers yet" />
-            ) : (
-              transfers.map((t) => (
-                <tr key={t.id} className="hover:bg-slate-700/30">
-                  <Td>
-                    <div className="flex flex-col">
-                      <span className="text-white font-medium">{t.product.name}</span>
-                      <span className="text-xs text-slate-500 font-mono">{t.product.sku}</span>
-                    </div>
-                  </Td>
-                  <Td className="text-slate-400 text-xs">
-                    <span className="text-slate-500">{t.fromLocation.warehouse.name}</span><br />
-                    <span className="text-slate-300">{t.fromLocation.name}</span>
-                  </Td>
-                  <Td className="text-slate-400 text-xs">
-                    <span className="text-slate-500">{t.toLocation.warehouse.name}</span><br />
-                    <span className="text-slate-300">{t.toLocation.name}</span>
-                  </Td>
-                  <Td className="tabular-nums font-semibold text-blue-400">{t.quantity}</Td>
-                  <Td>
-                    <StatusSelect
-                      status={t.status as DocStatus}
-                      onChange={(next) => handleStatusChange(t, next)}
-                    />
-                  </Td>
-                  <Td className="text-slate-500 text-xs max-w-[160px] truncate">{t.reason ?? '—'}</Td>
-                  <Td className="text-slate-500 text-xs whitespace-nowrap">
-                    {new Date(t.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                  </Td>
-                </tr>
-              ))
-            )}
+            ) : transfers.map((t) => (
+              <tr key={t.id} className="transition-colors hover:bg-white/[0.02]">
+                <Td>
+                  <div className="flex flex-col">
+                    <span className="font-medium text-slate-100">{t.product.name}</span>
+                    <span className="text-xs text-slate-500 font-mono">{t.product.sku}</span>
+                  </div>
+                </Td>
+                <Td className="text-xs">
+                  <span className="text-slate-500">{t.fromLocation.warehouse.name}</span><br />
+                  <span className="text-slate-300">{t.fromLocation.name}</span>
+                </Td>
+                <Td className="text-xs">
+                  <span className="text-slate-500">{t.toLocation.warehouse.name}</span><br />
+                  <span className="text-slate-300">{t.toLocation.name}</span>
+                </Td>
+                <Td><span className="tabular-nums font-semibold text-teal-400">{t.quantity}</span></Td>
+                <Td><StatusSelect status={t.status as DocStatus} onChange={(next) => handleStatusChange(t, next)} /></Td>
+                <Td className="text-slate-500 text-xs max-w-[160px] truncate">{t.reason ?? '—'}</Td>
+                <Td className="text-slate-500 text-xs whitespace-nowrap">
+                  {new Date(t.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                </Td>
+              </tr>
+            ))}
           </Table>
         )}
       </div>
