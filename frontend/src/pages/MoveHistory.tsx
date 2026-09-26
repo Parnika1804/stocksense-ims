@@ -1,6 +1,7 @@
+import { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useApi } from '../hooks/useApi';
-import { ApiErr, Table, Td, EmptyRow } from '../components/ui';
+import { ApiErr, Table, Td, EmptyRow, selectCls } from '../components/ui';
 
 interface StockMove {
   id: number;
@@ -14,27 +15,51 @@ interface StockMove {
   to:   { id: number; name: string } | null;
 }
 
-function DirectionBadge({ move }: { move: StockMove }) {
-  const isIn  = move.toLocation !== null && move.fromLocation === null;
-  const isOut = move.fromLocation !== null && move.toLocation === null;
-  const both  = move.fromLocation !== null && move.toLocation !== null;
+type MoveType = 'all' | 'incoming' | 'outgoing' | 'transfer';
 
-  if (isIn)
+function classifyMove(m: StockMove): Exclude<MoveType, 'all'> {
+  if (m.toLocation !== null && m.fromLocation === null) return 'incoming';
+  if (m.fromLocation !== null && m.toLocation === null) return 'outgoing';
+  return 'transfer';
+}
+
+function DirectionBadge({ move }: { move: StockMove }) {
+  const type = classifyMove(move);
+  if (type === 'incoming')
     return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">↓ Incoming</span>;
-  if (isOut)
+  if (type === 'outgoing')
     return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">↑ Outgoing</span>;
-  if (both)
-    return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">⇄ Transfer</span>;
-  return <span className="text-slate-500 text-xs">—</span>;
+  return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">⇄ Transfer</span>;
 }
 
 export default function MoveHistory() {
   const { token } = useAuth();
   const { data: moves, loading, error } = useApi<StockMove[]>('/stockmoves', token);
 
+  const [typeFilter, setTypeFilter] = useState<MoveType>('all');
+  const [productFilter, setProductFilter] = useState('');
+
+  // Unique product list for the dropdown, derived from fetched moves
+  const productOptions = useMemo(() => {
+    if (!moves) return [];
+    const seen = new Map<number, string>();
+    moves.forEach((m) => seen.set(m.product.id, m.product.name));
+    return Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [moves]);
+
+  const visible = useMemo(() => {
+    if (!moves) return [];
+    return moves.filter((m) => {
+      if (typeFilter !== 'all' && classifyMove(m) !== typeFilter) return false;
+      if (productFilter && m.product.id !== Number(productFilter)) return false;
+      return true;
+    });
+  }, [moves, typeFilter, productFilter]);
+
   function rowClass(move: StockMove) {
-    if (move.toLocation !== null && move.fromLocation === null) return 'hover:bg-green-500/5';
-    if (move.fromLocation !== null && move.toLocation === null) return 'hover:bg-red-500/5';
+    const type = classifyMove(move);
+    if (type === 'incoming') return 'hover:bg-green-500/5';
+    if (type === 'outgoing') return 'hover:bg-red-500/5';
     return 'hover:bg-blue-500/5';
   }
 
@@ -49,16 +74,50 @@ export default function MoveHistory() {
         </div>
       </div>
 
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3">
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value as MoveType)}
+          className={`${selectCls()} w-44`}
+        >
+          <option value="all">All types</option>
+          <option value="incoming">↓ Incoming</option>
+          <option value="outgoing">↑ Outgoing</option>
+          <option value="transfer">⇄ Transfer</option>
+        </select>
+
+        <select
+          value={productFilter}
+          onChange={(e) => setProductFilter(e.target.value)}
+          className={`${selectCls()} w-56`}
+        >
+          <option value="">All products</option>
+          {productOptions.map(([id, name]) => (
+            <option key={id} value={id}>{name}</option>
+          ))}
+        </select>
+
+        {(typeFilter !== 'all' || productFilter) && (
+          <button
+            onClick={() => { setTypeFilter('all'); setProductFilter(''); }}
+            className="text-xs text-slate-400 hover:text-white transition-colors px-2"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
       {error && <ApiErr msg={error} />}
 
       {loading ? (
         <p className="text-slate-400 text-sm">Loading…</p>
       ) : (
         <Table heads={['Type', 'Product', 'Qty', 'From', 'To', 'Reason', 'Date']}>
-          {!moves?.length ? (
-            <EmptyRow cols={7} msg="No stock moves yet" />
+          {!visible.length ? (
+            <EmptyRow cols={7} msg={moves?.length ? 'No moves match the current filters' : 'No stock moves yet'} />
           ) : (
-            moves.map((m) => (
+            visible.map((m) => (
               <tr key={m.id} className={`transition-colors ${rowClass(m)}`}>
                 <Td><DirectionBadge move={m} /></Td>
                 <Td>

@@ -3,7 +3,10 @@ import { useApi } from '../hooks/useApi';
 import { ApiErr } from '../components/ui';
 
 interface Product { id: number; reorderQty: number; }
-interface StockItem { quantity: number; }
+interface StockItem {
+  quantity: number;
+  product: { id: number; name: string; sku: string };
+}
 interface Receipt { status: string; }
 interface Delivery { status: string; }
 
@@ -44,7 +47,8 @@ export default function Dashboard() {
   const errors  = [pErr, sErr, rErr, dErr].filter(Boolean);
 
   const totalProducts  = products?.length ?? 0;
-  const lowStock       = stock?.filter((s) => s.quantity < 10).length ?? 0;
+  const lowStockItems  = stock?.filter((s) => s.quantity < 10) ?? [];
+  const lowStock       = lowStockItems.length;
   const pendingReceipts   = receipts?.filter((r) => r.status === 'draft').length ?? 0;
   const pendingDeliveries = deliveries?.filter((d) => d.status === 'draft').length ?? 0;
 
@@ -56,6 +60,28 @@ export default function Dashboard() {
       </div>
 
       {errors.map((e) => <ApiErr key={e} msg={e!} />)}
+
+      {/* Low-stock alert banner */}
+      {!loading && lowStockItems.length > 0 && (
+        <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 flex flex-col gap-2">
+          <p className="text-sm font-medium text-yellow-300">
+            ⚠️ {lowStockItems.length} product{lowStockItems.length !== 1 ? 's are' : ' is'} low on stock or out of stock
+          </p>
+          <ul className="flex flex-wrap gap-2">
+            {lowStockItems.map((s) => (
+              <li key={s.product.id}
+                className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium
+                  border-yellow-500/30 bg-yellow-500/10 text-yellow-200">
+                <span className={s.quantity === 0 ? 'text-red-400' : 'text-yellow-400'}>
+                  {s.quantity === 0 ? '✕' : `${s.quantity}`}
+                </span>
+                {s.product.name}
+                <span className="text-yellow-600 font-mono">{s.product.sku}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
