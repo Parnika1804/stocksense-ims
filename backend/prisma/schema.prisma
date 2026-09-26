@@ -55,7 +55,8 @@ model Product {
   name        String
   description String?
   unit        String   @default("pcs")
-  reorderQty  Int      @default(0)
+  reorderQty        Int      @default(0)
+  reorderThreshold  Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

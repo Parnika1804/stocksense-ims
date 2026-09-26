@@ -10,6 +10,7 @@ const productSchema = z.object({
   description: z.string().optional(),
   unit: z.string().default('pcs'),
   reorderQty: z.number().int().min(0).default(0),
+  reorderThreshold: z.number().int().min(0).nullable().optional(),
 });
 
 // GET /products
@@ -22,7 +23,7 @@ router.get('/', async (_req: Request, res: Response) => {
 router.get('/stock', async (_req: Request, res: Response) => {
   const stock = await prisma.stockItem.findMany({
     include: {
-      product: { select: { id: true, sku: true, name: true, unit: true } },
+      product: { select: { id: true, sku: true, name: true, unit: true, reorderThreshold: true } },
       location: {
         select: {
           id: true,
