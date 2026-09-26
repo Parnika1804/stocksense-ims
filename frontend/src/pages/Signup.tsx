@@ -9,6 +9,7 @@ const schema = z.object({
   email: z.string().email('Enter a valid email'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   confirm: z.string(),
+  role: z.enum(['manager', 'staff']),
 }).refine((d) => d.password === d.confirm, {
   message: 'Passwords do not match',
   path: ['confirm'],
@@ -41,7 +42,7 @@ export default function Signup() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const [fields, setFields] = useState<Fields>({ name: '', email: '', password: '', confirm: '' });
+  const [fields, setFields] = useState<Fields>({ name: '', email: '', password: '', confirm: '', role: 'staff' });
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [apiError, setApiError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -64,9 +65,9 @@ export default function Signup() {
     }
     setLoading(true);
     try {
-      const { name, email, password } = parsed.data;
-      const data = await apiFetch<{ token: string; user: { id: number; email: string; name: string; role: string } }>(
-        '/auth/signup', { method: 'POST', body: JSON.stringify({ name, email, password }) },
+      const { name, email, password, role } = parsed.data;
+      const data = await apiFetch<{ token: string; user: { id: number; email: string; name: string; role: 'manager' | 'staff' } }>(
+        '/auth/signup', { method: 'POST', body: JSON.stringify({ name, email, password, role }) },
       );
       login(data.token, data.user);
       navigate('/');
@@ -123,6 +124,22 @@ export default function Signup() {
               <input type="password" autoComplete="new-password" value={fields.confirm}
                 onChange={(e) => set('confirm', e.target.value)}
                 className={authInput(!!fieldErrors.confirm)} placeholder="••••••••" />
+            </AuthField>
+
+            <AuthField label="Account type">
+              <div className="flex gap-3 pt-0.5">
+                {([['staff', 'Warehouse Staff'], ['manager', 'Inventory Manager']] as const).map(([val, label]) => (
+                  <label key={val}
+                    className={`flex-1 flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm cursor-pointer transition-all duration-150
+                      ${fields.role === val
+                        ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300'
+                        : 'border-[#2a3347] text-slate-500 hover:border-slate-500 hover:text-slate-300'}`}>
+                    <input type="radio" name="role" value={val} checked={fields.role === val}
+                      onChange={() => set('role', val)} className="sr-only" />
+                    {label}
+                  </label>
+                ))}
+              </div>
             </AuthField>
 
             <button type="submit" disabled={loading}

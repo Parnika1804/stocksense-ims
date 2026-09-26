@@ -13,6 +13,7 @@ const authSchema = z.object({
 
 const signupSchema = authSchema.extend({
   name: z.string().min(1, 'Name is required'),
+  role: z.enum(['manager', 'staff']).default('staff'),
 });
 
 const forgotSchema = z.object({
@@ -39,7 +40,7 @@ router.post('/signup', async (req: Request, res: Response) => {
     return;
   }
 
-  const { email, password, name } = parsed.data;
+  const { email, password, name, role } = parsed.data;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -49,7 +50,7 @@ router.post('/signup', async (req: Request, res: Response) => {
 
   const hashed = await bcrypt.hash(password, 12);
   const user = await prisma.user.create({
-    data: { email, name, password: hashed },
+    data: { email, name, password: hashed, role },
     select: { id: true, email: true, name: true, role: true },
   });
 

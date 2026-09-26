@@ -31,7 +31,20 @@ type FErr = Partial<Record<keyof Fields, string>>;
 const empty: Fields = { sku: '', name: '', category: '', description: '', unit: 'pcs', reorderQty: 0, reorderThreshold: '' };
 
 export default function Products() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+
+  // Staff users cannot access this page
+  if (user?.role === 'staff') {
+    return (
+      <div className="flex flex-col gap-6">
+        <h1 className="text-xl font-semibold text-white">Products</h1>
+        <div className="rounded-xl border border-slate-700 bg-slate-800/50 px-6 py-12 text-center">
+          <p className="text-slate-400 text-sm">Managers only.</p>
+        </div>
+      </div>
+    );
+  }
+
   const { data: products, loading, error, refetch } = useApi<Product[]>('/products', token);
   const { data: locations } = useApi<Location[]>('/locations', token);
   const { data: stockData } = useApi<StockEntry[]>('/products/stock', token);

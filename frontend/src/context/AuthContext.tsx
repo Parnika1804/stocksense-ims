@@ -4,7 +4,7 @@ interface AuthUser {
   id: number;
   email: string;
   name: string;
-  role: string;
+  role: 'manager' | 'staff';
 }
 
 interface AuthState {

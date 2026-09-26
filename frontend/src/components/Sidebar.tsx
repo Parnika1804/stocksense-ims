@@ -177,6 +177,16 @@ function ProfileMenu({ onClose }: { onClose: () => void }) {
 
 // ── Sidebar ───────────────────────────────────────────────────────
 export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { user } = useAuth();
+  const isManager = user?.role === 'manager';
+
+  // Filter nav items: staff cannot see Products or Settings
+  const visibleNav = nav.filter((item) => {
+    if (isManager) return true;
+    const label = isGroup(item) ? item.label : (item as LeafItem).label;
+    return label !== 'Products' && label !== 'Settings';
+  });
+
   return (
     <>
       {open && <div className="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm md:hidden" onClick={onClose} />}
@@ -201,7 +211,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
 
         {/* ── Nav ── */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-0.5">
-          {nav.map((item) =>
+          {visibleNav.map((item) =>
             isGroup(item) ? (
               <NavGroup key={item.label} item={item} onClose={onClose} />
             ) : (

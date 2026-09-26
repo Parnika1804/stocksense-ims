@@ -52,7 +52,20 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function Settings() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+
+  // Staff users cannot access this page
+  if (user?.role === 'staff') {
+    return (
+      <div className="flex flex-col gap-6 max-w-2xl">
+        <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Settings</h1>
+        <div className="rounded-xl border border-slate-700 bg-slate-800/50 px-6 py-12 text-center">
+          <p className="text-slate-400 text-sm">Managers only.</p>
+        </div>
+      </div>
+    );
+  }
+
   const { data: warehouses, loading: wLoad, error: wErr, refetch: refetchW } =
     useApi<Warehouse[]>('/warehouses', token);
 
