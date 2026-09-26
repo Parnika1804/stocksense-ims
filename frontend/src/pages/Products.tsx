@@ -7,7 +7,7 @@ import { Field, inputCls, Btn, Modal, Table, Td, EmptyRow, ApiErr } from '../com
 
 interface Product {
   id: number; sku: string; name: string; description: string | null;
-  unit: string; reorderQty: number;
+  unit: string; reorderQty: number; reorderThreshold: number | null;
 }
 
 const schema = z.object({
@@ -16,11 +16,12 @@ const schema = z.object({
   description: z.string().optional(),
   unit: z.string().min(1, 'Unit is required'),
   reorderQty: z.coerce.number().int().min(0),
+  reorderThreshold: z.union([z.coerce.number().int().min(0), z.literal('')]).optional(),
 });
 type Fields = z.infer<typeof schema>;
 type FErr = Partial<Record<keyof Fields, string>>;
 
-const empty: Fields = { sku: '', name: '', description: '', unit: 'pcs', reorderQty: 0 };
+const empty: Fields = { sku: '', name: '', description: '', unit: 'pcs', reorderQty: 0, reorderThreshold: '' };
 
 export default function Products() {
   const { token } = useAuth();
@@ -59,7 +60,13 @@ export default function Products() {
     }
     setSaving(true);
     try {
-      await apiFetch('/products', { method: 'POST', body: JSON.stringify(parsed.data) }, token);
+      const payload = {
+        ...parsed.data,
+        reorderThreshold: parsed.data.reorderThreshold === '' || parsed.data.reorderThreshold === undefined
+          ? null
+          : parsed.data.reorderThreshold,
+      };
+      await apiFetch('/products', { method: 'POST', body: JSON.stringify(payload) }, token);
       setShowForm(false);
       refetch();
     } catch (err) {
@@ -95,9 +102,9 @@ export default function Products() {
       {loading ? (
         <p className="text-slate-400 text-sm">Loading…</p>
       ) : (
-        <Table heads={['SKU', 'Name', 'Description', 'Unit', 'Reorder Qty']}>
+        <Table heads={['SKU', 'Name', 'Description', 'Unit', 'Reorder Qty', 'Alert Threshold']}>
           {!visible.length
-            ? <EmptyRow cols={5} msg={query ? 'No products match your search' : 'No products yet'} />
+            ? <EmptyRow cols={6} msg={query ? 'No products match your search' : 'No products yet'} />
             : visible.map((p) => (
               <tr key={p.id} className="hover:bg-slate-700/30">
                 <Td><span className="font-mono text-xs text-slate-300">{p.sku}</span></Td>
@@ -105,6 +112,7 @@ export default function Products() {
                 <Td className="text-slate-400">{p.description ?? '—'}</Td>
                 <Td>{p.unit}</Td>
                 <Td>{p.reorderQty}</Td>
+                <Td className="text-slate-400">{p.reorderThreshold ?? <span className="text-slate-600">—</span>}</Td>
               </tr>
             ))
           }
@@ -131,6 +139,15 @@ export default function Products() {
             </Field>
             <Field label="Reorder Qty" error={fErr.reorderQty}>
               <input type="number" min={0} value={fields.reorderQty} onChange={(e) => set('reorderQty', e.target.value)} className={inputCls(!!fErr.reorderQty)} />
+            </Field>
+            <Field label="Alert Threshold (optional)" error={fErr.reorderThreshold?.toString()}>
+              <input
+                type="number" min={0}
+                value={fields.reorderThreshold ?? ''}
+                onChange={(e) => set('reorderThreshold', e.target.value)}
+                className={inputCls(false)}
+                placeholder="e.g. 5 — triggers low-stock alert"
+              />
             </Field>
             <div className="flex justify-end gap-2 pt-2">
               <Btn variant="ghost" onClick={() => setShowForm(false)}>Cancel</Btn>

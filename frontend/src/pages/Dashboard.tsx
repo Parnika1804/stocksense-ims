@@ -5,7 +5,7 @@ import { ApiErr } from '../components/ui';
 interface Product { id: number; reorderQty: number; }
 interface StockItem {
   quantity: number;
-  product: { id: number; name: string; sku: string };
+  product: { id: number; name: string; sku: string; reorderThreshold: number | null };
 }
 interface Receipt { status: string; }
 interface Delivery { status: string; }
@@ -47,7 +47,10 @@ export default function Dashboard() {
   const errors  = [pErr, sErr, rErr, dErr].filter(Boolean);
 
   const totalProducts  = products?.length ?? 0;
-  const lowStockItems  = stock?.filter((s) => s.quantity < 10) ?? [];
+  const lowStockItems  = stock?.filter((s) => {
+    const threshold = s.product.reorderThreshold ?? 10;
+    return s.quantity < threshold;
+  }) ?? [];
   const lowStock       = lowStockItems.length;
   const pendingReceipts   = receipts?.filter((r) => r.status === 'draft').length ?? 0;
   const pendingDeliveries = deliveries?.filter((d) => d.status === 'draft').length ?? 0;
@@ -92,7 +95,7 @@ export default function Dashboard() {
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard label="Total Products"     value={totalProducts}  sub="in catalogue"           accent="blue"   />
-          <KpiCard label="Low Stock"          value={lowStock}       sub="items below 10 units"   accent={lowStock > 0 ? 'red' : 'green'} />
+          <KpiCard label="Low Stock"          value={lowStock}       sub="below reorder threshold"   accent={lowStock > 0 ? 'red' : 'green'} />
           <KpiCard label="Pending Receipts"   value={pendingReceipts}   sub="awaiting validation" accent={pendingReceipts > 0 ? 'yellow' : 'green'} />
           <KpiCard label="Pending Deliveries" value={pendingDeliveries} sub="awaiting validation" accent={pendingDeliveries > 0 ? 'yellow' : 'green'} />
         </div>
