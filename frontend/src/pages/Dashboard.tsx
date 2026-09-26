@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useApi } from '../hooks/useApi';
 import { ApiErr, selectCls } from '../components/ui';
+import { STATUSES, type DocStatus } from '../components/ui';
 
 // ── Types ──────────────────────────────────────────────────────────
 interface StockItem {
@@ -9,13 +10,14 @@ interface StockItem {
   product: { id: number; name: string; sku: string; category: string; reorderThreshold: number | null };
   location: { id: number; warehouse: { id: number; name: string } };
 }
-interface Receipt  { id: number; status: string; reference: string; }
-interface Delivery { id: number; status: string; reference: string; }
-interface Transfer { id: number; }
-interface Adjustment { id: number; }
-interface Warehouse { id: number; name: string; }
+interface Receipt     { id: number; status: string; reference: string; }
+interface Delivery    { id: number; status: string; reference: string; }
+interface Transfer    { id: number; status: string; }
+interface Adjustment  { id: number; }
+interface Warehouse   { id: number; name: string; }
 
 type DocType = 'all' | 'receipts' | 'deliveries' | 'transfers' | 'adjustments';
+type StatusFilter = DocStatus | 'all';
 
 // ── KPI card ───────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, accent }: {
@@ -56,20 +58,21 @@ export default function Dashboard() {
   const loading = sLoad || rLoad || dLoad || tLoad || aLoad || wLoad;
   const errors  = [sErr, rErr, dErr, tErr, aErr, wErr].filter(Boolean);
 
-  // ── Filter state ──────────────────────────────────────────────
-  const [docType, setDocType]  = useState<DocType>('all');
-  const [warehouseId, setWHId] = useState('');
-  const [category, setCategory] = useState('');
+  // ── Filter state ───────────────────────────────────────────────
+  const [docType,      setDocType]    = useState<DocType>('all');
+  const [warehouseId,  setWHId]       = useState('');
+  const [category,     setCategory]   = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  const hasFilters = docType !== 'all' || warehouseId !== '' || category !== '';
+  const hasFilters = docType !== 'all' || warehouseId !== '' || category !== '' || statusFilter !== 'all';
 
-  // Categories derived from stock data
+  // ── Derived: categories from stock ────────────────────────────
   const categories = useMemo(() =>
     [...new Set((stock ?? []).map((s) => s.product.category))].sort(),
     [stock]
   );
 
-  // ── Filtered stock (warehouse scope) ──────────────────────────
+  // ── Filtered stock (warehouse + category) ─────────────────────
   const filteredStock = useMemo(() => {
     if (!stock) return [];
     return stock.filter((s) => {
@@ -84,55 +87,73 @@ export default function Dashboard() {
     [filteredStock]
   );
 
-  // ── KPI values (document type scope) ─────────────────────────
-  const pendingReceipts   = (receipts   ?? []).filter((r) => r.status === 'draft').length;
-  const pendingDeliveries = (deliveries ?? []).filter((d) => d.status === 'draft').length;
-  const totalTransfers    = transfers?.length   ?? 0;
-  const totalAdjustments  = adjustments?.length ?? 0;
+  // ── KPI counts (status-filter-aware) ──────────────────────────
+  const receiptCount = useMemo(() => {
+    const list = receipts ?? [];
+    if (statusFilter === 'all') return list.filter((r) => r.status === 'draft').length;
+    return list.filter((r) => r.status === statusFilter).length;
+  }, [receipts, statusFilter]);
 
-  // Which KPI cards to show based on docType filter
-  type KpiDef = { label: string; value: number; sub: string; accent: 'green'|'yellow'|'red'|'blue' };
+  const deliveryCount = useMemo(() => {
+    const list = deliveries ?? [];
+    if (statusFilter === 'all') return list.filter((d) => d.status === 'draft').length;
+    return list.filter((d) => d.status === statusFilter).length;
+  }, [deliveries, statusFilter]);
+
+  const transferCount = useMemo(() => {
+    const list = transfers ?? [];
+    if (statusFilter === 'all') return list.length;
+    return list.filter((t) => t.status === statusFilter).length;
+  }, [transfers, statusFilter]);
+
+  // Scheduled = waiting or ready — always live, ignores status filter
+  const scheduledTransfers = useMemo(() =>
+    (transfers ?? []).filter((t) => t.status === 'waiting' || t.status === 'ready').length,
+    [transfers]
+  );
+
+  const totalAdjustments = adjustments?.length ?? 0;
+
+  // ── KPI cards ─────────────────────────────────────────────────
+  const receiptLabel   = statusFilter === 'all' ? 'Pending Receipts'   : `Receipts · ${statusFilter}`;
+  const deliveryLabel  = statusFilter === 'all' ? 'Pending Deliveries'  : `Deliveries · ${statusFilter}`;
+  const transferLabel  = statusFilter === 'all' ? 'Transfers'           : `Transfers · ${statusFilter}`;
+  const receiptSub     = statusFilter === 'all' ? 'draft — awaiting validation' : `status: ${statusFilter}`;
+  const deliverySub    = statusFilter === 'all' ? 'draft — awaiting validation' : `status: ${statusFilter}`;
+  const transferSub    = statusFilter === 'all' ? `${scheduledTransfers} scheduled (waiting/ready)` : `status: ${statusFilter}`;
+
+  type KpiDef = { label: string; value: number; sub: string; accent: 'green' | 'yellow' | 'red' | 'blue' };
+
   const kpis = useMemo((): KpiDef[] => {
     const stockCard: KpiDef = {
-      label: 'Low Stock', value: lowStockItems.length,
+      label: 'Low Stock',
+      value: lowStockItems.length,
       sub: [
         warehouseId ? `in ${warehouses?.find((w) => w.id === Number(warehouseId))?.name}` : '',
-        category ? `cat: ${category}` : '',
+        category    ? `cat: ${category}` : '',
         !warehouseId && !category ? 'below reorder threshold' : '',
       ].filter(Boolean).join(' · '),
       accent: lowStockItems.length > 0 ? 'red' : 'green',
     };
 
-    if (docType === 'receipts')
-      return [
-        stockCard,
-        { label: 'Pending Receipts', value: pendingReceipts, sub: 'awaiting validation', accent: pendingReceipts > 0 ? 'yellow' : 'green' },
-      ];
-    if (docType === 'deliveries')
-      return [
-        stockCard,
-        { label: 'Pending Deliveries', value: pendingDeliveries, sub: 'awaiting validation', accent: pendingDeliveries > 0 ? 'yellow' : 'green' },
-      ];
-    if (docType === 'transfers')
-      return [
-        stockCard,
-        { label: 'Transfers', value: totalTransfers, sub: 'total recorded', accent: 'blue' },
-      ];
-    if (docType === 'adjustments')
-      return [
-        stockCard,
-        { label: 'Adjustments', value: totalAdjustments, sub: 'total recorded', accent: 'blue' },
-      ];
+    const rCard: KpiDef = { label: receiptLabel,  value: receiptCount,  sub: receiptSub,  accent: receiptCount  > 0 ? 'yellow' : 'green' };
+    const dCard: KpiDef = { label: deliveryLabel, value: deliveryCount, sub: deliverySub, accent: deliveryCount > 0 ? 'yellow' : 'green' };
+    const tCard: KpiDef = { label: transferLabel, value: transferCount, sub: transferSub, accent: 'blue' };
+    const sCard: KpiDef = { label: 'Scheduled',   value: scheduledTransfers, sub: 'waiting or ready', accent: scheduledTransfers > 0 ? 'yellow' : 'green' };
+    const aCard: KpiDef = { label: 'Adjustments', value: totalAdjustments,   sub: 'total recorded',   accent: 'blue' };
+
+    if (docType === 'receipts')    return [stockCard, rCard];
+    if (docType === 'deliveries')  return [stockCard, dCard];
+    if (docType === 'adjustments') return [stockCard, aCard];
+    if (docType === 'transfers')   return [stockCard, tCard, sCard];
 
     // all
-    return [
-      { label: 'Low Stock', value: lowStockItems.length, sub: stockCard.sub, accent: stockCard.accent },
-      { label: 'Pending Receipts',   value: pendingReceipts,   sub: 'awaiting validation', accent: pendingReceipts   > 0 ? 'yellow' : 'green' },
-      { label: 'Pending Deliveries', value: pendingDeliveries, sub: 'awaiting validation', accent: pendingDeliveries > 0 ? 'yellow' : 'green' },
-      { label: 'Transfers',    value: totalTransfers,   sub: 'total recorded', accent: 'blue' },
-      { label: 'Adjustments',  value: totalAdjustments, sub: 'total recorded', accent: 'blue' },
-    ];
-  }, [docType, lowStockItems, pendingReceipts, pendingDeliveries, totalTransfers, totalAdjustments, warehouseId, category, warehouses]);
+    return [stockCard, rCard, dCard, tCard, sCard, aCard];
+  }, [
+    docType, lowStockItems, receiptCount, deliveryCount, transferCount,
+    scheduledTransfers, totalAdjustments, warehouseId, category, warehouses,
+    receiptLabel, deliveryLabel, transferLabel, receiptSub, deliverySub, transferSub,
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -146,7 +167,7 @@ export default function Dashboard() {
       {/* ── Filters ── */}
       <div className="flex flex-wrap gap-3 items-center">
         <select value={docType} onChange={(e) => setDocType(e.target.value as DocType)}
-          className={`${selectCls()} w-52`}>
+          className={`${selectCls()} w-48`}>
           <option value="all">All document types</option>
           <option value="receipts">Receipts</option>
           <option value="deliveries">Deliveries</option>
@@ -154,8 +175,16 @@ export default function Dashboard() {
           <option value="adjustments">Adjustments</option>
         </select>
 
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          className={`${selectCls()} w-40`}>
+          <option value="all">All statuses</option>
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+          ))}
+        </select>
+
         <select value={warehouseId} onChange={(e) => setWHId(e.target.value)}
-          className={`${selectCls()} w-48`}>
+          className={`${selectCls()} w-44`}>
           <option value="">All warehouses</option>
           {(warehouses ?? []).map((w) => (
             <option key={w.id} value={w.id}>{w.name}</option>
@@ -163,13 +192,14 @@ export default function Dashboard() {
         </select>
 
         <select value={category} onChange={(e) => setCategory(e.target.value)}
-          className={`${selectCls()} w-48`}>
+          className={`${selectCls()} w-44`}>
           <option value="">All categories</option>
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
 
         {hasFilters && (
-          <button onClick={() => { setDocType('all'); setWHId(''); setCategory(''); }}
+          <button
+            onClick={() => { setDocType('all'); setWHId(''); setCategory(''); setStatusFilter('all'); }}
             className="text-xs text-slate-400 hover:text-white transition-colors px-2">
             Clear filters
           </button>
@@ -187,7 +217,8 @@ export default function Dashboard() {
           <ul className="flex flex-wrap gap-2">
             {lowStockItems.map((s) => (
               <li key={`${s.product.id}-${s.location.id}`}
-                className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium border-yellow-500/30 bg-yellow-500/10 text-yellow-200">
+                className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium
+                  border-yellow-500/30 bg-yellow-500/10 text-yellow-200">
                 <span className={s.quantity === 0 ? 'text-red-400' : 'text-yellow-400'}>
                   {s.quantity === 0 ? '✕' : s.quantity}
                 </span>
@@ -207,7 +238,7 @@ export default function Dashboard() {
           ))}
         </div>
       ) : (
-        <div className={`grid gap-4 ${kpis.length <= 2 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-5'}`}>
+        <div className={`grid gap-4 grid-cols-2 ${kpis.length >= 5 ? 'lg:grid-cols-6' : kpis.length >= 3 ? 'lg:grid-cols-3' : ''}`}>
           {kpis.map((k) => (
             <KpiCard key={k.label} label={k.label} value={k.value} sub={k.sub} accent={k.accent} />
           ))}
