@@ -27,6 +27,7 @@ export default function Products() {
   const { data: products, loading, error, refetch } = useApi<Product[]>('/products', token);
 
   const [showForm, setShowForm] = useState(false);
+  const [query, setQuery] = useState('');
   const [fields, setFields] = useState<Fields>(empty);
   const [fErr, setFErr] = useState<FErr>({});
   const [apiErr, setApiErr] = useState('');
@@ -37,6 +38,13 @@ export default function Products() {
     setFErr((e) => ({ ...e, [k]: undefined }));
     setApiErr('');
   }
+
+  const needle = query.trim().toLowerCase();
+  const visible = needle
+    ? (products ?? []).filter(
+        (p) => p.name.toLowerCase().includes(needle) || p.sku.toLowerCase().includes(needle)
+      )
+    : (products ?? []);
 
   function openForm() { setFields(empty); setFErr({}); setApiErr(''); setShowForm(true); }
 
@@ -68,15 +76,29 @@ export default function Products() {
         <Btn onClick={openForm}>+ New Product</Btn>
       </div>
 
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <span className="absolute inset-y-0 left-3 flex items-center text-slate-500 pointer-events-none">
+          🔍
+        </span>
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name or SKU…"
+          className="w-full rounded-lg border border-slate-600 bg-slate-700 pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition"
+        />
+      </div>
+
       {error && <ApiErr msg={error} />}
 
       {loading ? (
         <p className="text-slate-400 text-sm">Loading…</p>
       ) : (
         <Table heads={['SKU', 'Name', 'Description', 'Unit', 'Reorder Qty']}>
-          {!products?.length
-            ? <EmptyRow cols={5} msg="No products yet" />
-            : products.map((p) => (
+          {!visible.length
+            ? <EmptyRow cols={5} msg={query ? 'No products match your search' : 'No products yet'} />
+            : visible.map((p) => (
               <tr key={p.id} className="hover:bg-slate-700/30">
                 <Td><span className="font-mono text-xs text-slate-300">{p.sku}</span></Td>
                 <Td className="font-medium text-white">{p.name}</Td>
