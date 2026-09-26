@@ -41,12 +41,14 @@ export function Btn({
 
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    draft: 'bg-slate-600 text-slate-200',
-    done: 'bg-green-600/20 text-green-400 border border-green-600/30',
-    confirmed: 'bg-blue-600/20 text-blue-400 border border-blue-600/30',
+    draft:    'bg-slate-600/50 text-slate-300 border border-slate-500/30',
+    waiting:  'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30',
+    ready:    'bg-blue-500/10 text-blue-400 border border-blue-500/30',
+    done:     'bg-green-500/10 text-green-400 border border-green-500/30',
+    canceled: 'bg-red-500/10 text-red-400 border border-red-500/30',
   };
   return (
-    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${map[status] ?? 'bg-slate-600 text-slate-200'}`}>
+    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${map[status] ?? 'bg-slate-600 text-slate-200'}`}>
       {status}
     </span>
   );
@@ -98,5 +100,57 @@ export function EmptyRow({ cols, msg }: { cols: number; msg: string }) {
     <tr>
       <td colSpan={cols} className="px-4 py-8 text-center text-slate-500">{msg}</td>
     </tr>
+  );
+}
+
+export const STATUSES = ['draft', 'waiting', 'ready', 'done', 'canceled'] as const;
+export type DocStatus = typeof STATUSES[number];
+
+export function StatusSelect({
+  status,
+  onChange,
+  disabled,
+}: {
+  status: DocStatus;
+  onChange: (next: DocStatus) => void;
+  disabled?: boolean;
+}) {
+  const colors: Record<DocStatus, string> = {
+    draft:    'text-slate-300',
+    waiting:  'text-yellow-400',
+    ready:    'text-blue-400',
+    done:     'text-green-400',
+    canceled: 'text-red-400',
+  };
+
+  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const next = e.target.value as DocStatus;
+    if (next === status) return;
+
+    if (next === 'done') {
+      if (!window.confirm('Transitioning to Done will update stock levels. Continue?')) return;
+    } else if (next === 'canceled') {
+      if (!window.confirm('Mark this record as Canceled?')) return;
+    }
+
+    onChange(next);
+  }
+
+  return (
+    <select
+      value={status}
+      onChange={handleChange}
+      disabled={disabled || status === 'done' || status === 'canceled'}
+      className={`rounded-lg border border-slate-600 bg-slate-800 px-2 py-1 text-xs font-medium outline-none
+        focus:ring-2 focus:ring-blue-500/40 disabled:opacity-50 disabled:cursor-not-allowed transition
+        ${colors[status]}`}
+    >
+      {STATUSES.map((s) => (
+        // Prevent going back to draft once done
+        <option key={s} value={s} disabled={s === 'draft' && (status === 'done' || status === 'waiting' || status === 'ready' || status === 'canceled')}>
+          {s.charAt(0).toUpperCase() + s.slice(1)}
+        </option>
+      ))}
+    </select>
   );
 }

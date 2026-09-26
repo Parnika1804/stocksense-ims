@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch, ApiError } from '../lib/api';
 import { useApi } from '../hooks/useApi';
-import { Field, inputCls, selectCls, Btn, ApiErr, Table, Td, EmptyRow } from '../components/ui';
+import { Field, inputCls, selectCls, Btn, ApiErr, Table, Td, EmptyRow, StatusSelect, type DocStatus } from '../components/ui';
 
 interface Product  { id: number; sku: string; name: string; unit: string; }
 interface Location { id: number; name: string; warehouse: { name: string }; }
@@ -11,6 +11,7 @@ interface Location { id: number; name: string; warehouse: { name: string }; }
 interface Transfer {
   id: number;
   quantity: number;
+  status: string;
   reason: string | null;
   createdAt: string;
   product:      { id: number; sku: string; name: string };
@@ -50,6 +51,15 @@ export default function Transfers() {
     setFErrors((e) => ({ ...e, [k]: undefined }));
     setApiErr('');
     setLastResult(null);
+  }
+
+  async function handleStatusChange(t: Transfer, next: DocStatus) {
+    try {
+      await apiFetch(`/transfers/${t.id}/status`, { method: 'POST', body: JSON.stringify({ status: next }) }, token);
+      refetch();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Status update failed');
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -169,9 +179,9 @@ export default function Transfers() {
         {loading ? (
           <p className="text-slate-400 text-sm">Loading…</p>
         ) : (
-          <Table heads={['Product', 'From', 'To', 'Qty', 'Reason', 'Date']}>
+          <Table heads={['Product', 'From', 'To', 'Qty', 'Status', 'Reason', 'Date']}>
             {!transfers?.length ? (
-              <EmptyRow cols={6} msg="No transfers yet" />
+              <EmptyRow cols={7} msg="No transfers yet" />
             ) : (
               transfers.map((t) => (
                 <tr key={t.id} className="hover:bg-slate-700/30">
@@ -190,6 +200,12 @@ export default function Transfers() {
                     <span className="text-slate-300">{t.toLocation.name}</span>
                   </Td>
                   <Td className="tabular-nums font-semibold text-blue-400">{t.quantity}</Td>
+                  <Td>
+                    <StatusSelect
+                      status={t.status as DocStatus}
+                      onChange={(next) => handleStatusChange(t, next)}
+                    />
+                  </Td>
                   <Td className="text-slate-500 text-xs max-w-[160px] truncate">{t.reason ?? '—'}</Td>
                   <Td className="text-slate-500 text-xs whitespace-nowrap">
                     {new Date(t.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}

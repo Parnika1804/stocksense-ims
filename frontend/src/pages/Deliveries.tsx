@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiFetch, ApiError } from '../lib/api';
 import { useApi } from '../hooks/useApi';
 import {
-  Field, inputCls, selectCls, Btn, Modal, Table, Td, EmptyRow, ApiErr, StatusBadge,
+  Field, inputCls, selectCls, Btn, Modal, Table, Td, EmptyRow, ApiErr, StatusBadge, StatusSelect, type DocStatus,
 } from '../components/ui';
 
 interface Product { id: number; sku: string; name: string; unit: string; }
@@ -53,6 +53,7 @@ export default function Deliveries() {
   const [vLines, setVLines] = useState<{ id: number; locationId: number }[]>([]);
   const [vErr, setVErr] = useState('');
   const [vSaving, setVSaving] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<DocStatus | null>(null);
 
   function openCreate() {
     setFields({ reference: '', customerId: '', lines: [emptyLine()] });
@@ -63,6 +64,20 @@ export default function Deliveries() {
     setValidateTarget(d);
     setVLines(d.deliveryLines.map((l) => ({ id: l.id, locationId: 0 })));
     setVErr('');
+  }
+
+  async function handleStatusChange(d: Delivery, next: DocStatus) {
+    if (next === 'done') {
+      openValidate(d);
+      setPendingStatus('done');
+      return;
+    }
+    try {
+      await apiFetch(`/deliveries/${d.id}/status`, { method: 'POST', body: JSON.stringify({ status: next }) }, token);
+      refetch();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Status update failed');
+    }
   }
 
   function setLine(i: number, k: keyof ReturnType<typeof emptyLine>, v: string) {
@@ -114,12 +129,16 @@ export default function Deliveries() {
     const parsed = validateSchema.safeParse({ lines: vLines });
     if (!parsed.success) { setVErr('Fill in all locations'); return; }
     setVSaving(true);
+    const endpoint = pendingStatus === 'done'
+      ? `/deliveries/${validateTarget!.id}/status`
+      : `/deliveries/${validateTarget!.id}/validate`;
+    const body = pendingStatus === 'done'
+      ? { status: 'done', lines: parsed.data.lines }
+      : { lines: parsed.data.lines };
     try {
-      await apiFetch(`/deliveries/${validateTarget!.id}/validate`, {
-        method: 'POST',
-        body: JSON.stringify({ lines: parsed.data.lines }),
-      }, token);
+      await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(body) }, token);
       setValidateTarget(null);
+      setPendingStatus(null);
       refetch();
     } catch (err) {
       setVErr(err instanceof ApiError ? err.message : 'Something went wrong');
@@ -145,9 +164,10 @@ export default function Deliveries() {
               <Td><StatusBadge status={d.status} /></Td>
               <Td className="text-slate-400 text-xs">{new Date(d.createdAt).toLocaleDateString()}</Td>
               <Td>
-                {d.status === 'draft' && (
-                  <Btn variant="ghost" onClick={() => openValidate(d)}>Validate</Btn>
-                )}
+                <StatusSelect
+                  status={d.status as DocStatus}
+                  onChange={(next) => handleStatusChange(d, next)}
+                />
               </Td>
             </tr>
           ))}

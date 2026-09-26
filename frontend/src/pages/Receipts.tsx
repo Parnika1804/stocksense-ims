@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiFetch, ApiError } from '../lib/api';
 import { useApi } from '../hooks/useApi';
 import {
-  Field, inputCls, selectCls, Btn, Modal, Table, Td, EmptyRow, ApiErr, StatusBadge,
+  Field, inputCls, selectCls, Btn, Modal, Table, Td, EmptyRow, ApiErr, StatusBadge, StatusSelect, type DocStatus,
 } from '../components/ui';
 
 interface Product { id: number; sku: string; name: string; unit: string; }
@@ -59,6 +59,7 @@ export default function Receipts() {
   const [vLines, setVLines] = useState<{ id: number; receivedQty: number; locationId: number }[]>([]);
   const [vErr, setVErr] = useState('');
   const [vSaving, setVSaving] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<DocStatus | null>(null);
 
   function openCreate() {
     setFields({ reference: '', supplierId: '', lines: [emptyLine()] });
@@ -69,6 +70,21 @@ export default function Receipts() {
     setValidateTarget(r);
     setVLines(r.receiptLines.map((l) => ({ id: l.id, receivedQty: l.expectedQty, locationId: 0 })));
     setVErr('');
+  }
+
+  async function handleStatusChange(r: Receipt, next: DocStatus) {
+    if (next === 'done') {
+      // done requires line/location data — open validate modal
+      openValidate(r);
+      setPendingStatus('done');
+      return;
+    }
+    try {
+      await apiFetch(`/receipts/${r.id}/status`, { method: 'POST', body: JSON.stringify({ status: next }) }, token);
+      refetch();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Status update failed');
+    }
   }
 
   // ── Create helpers ─────────────────────────────────────────────
@@ -126,12 +142,16 @@ export default function Receipts() {
     if (!parsed.success) { setVErr('Fill in all locations and quantities'); return; }
     if (vLines.some((l) => l.locationId === 0)) { setVErr('Select a location for every line'); return; }
     setVSaving(true);
+    const endpoint = pendingStatus === 'done'
+      ? `/receipts/${validateTarget!.id}/status`
+      : `/receipts/${validateTarget!.id}/validate`;
+    const body = pendingStatus === 'done'
+      ? { status: 'done', lines: parsed.data.lines }
+      : { lines: parsed.data.lines };
     try {
-      await apiFetch(`/receipts/${validateTarget!.id}/validate`, {
-        method: 'POST',
-        body: JSON.stringify({ lines: parsed.data.lines }),
-      }, token);
+      await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(body) }, token);
       setValidateTarget(null);
+      setPendingStatus(null);
       refetch();
     } catch (err) {
       setVErr(err instanceof ApiError ? err.message : 'Something went wrong');
@@ -157,9 +177,10 @@ export default function Receipts() {
               <Td><StatusBadge status={r.status} /></Td>
               <Td className="text-slate-400 text-xs">{new Date(r.createdAt).toLocaleDateString()}</Td>
               <Td>
-                {r.status === 'draft' && (
-                  <Btn variant="ghost" onClick={() => openValidate(r)}>Validate</Btn>
-                )}
+                <StatusSelect
+                  status={r.status as DocStatus}
+                  onChange={(next) => handleStatusChange(r, next)}
+                />
               </Td>
             </tr>
           ))}

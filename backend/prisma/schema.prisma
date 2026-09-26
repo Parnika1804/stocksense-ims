@@ -165,6 +165,7 @@ model Transfer {
   fromLocationId Int
   toLocationId   Int
   quantity       Int
+  status         String   @default("draft")
   reason         String?
   createdAt      DateTime @default(now())
 

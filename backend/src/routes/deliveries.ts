@@ -4,6 +4,8 @@ import prisma from '../prisma';
 
 const router = Router();
 
+const STATUSES = ['draft', 'waiting', 'ready', 'done', 'canceled'] as const;
+
 const deliveryLineSchema = z.object({
   productId: z.number().int().positive(),
   qty: z.number().int().positive(),
@@ -17,13 +19,62 @@ const createDeliverySchema = z.object({
 });
 
 const validateDeliverySchema = z.object({
-  lines: z.array(
-    z.object({
-      id: z.number().int().positive(),
-      locationId: z.number().int().positive(),
-    })
-  ).min(1),
+  lines: z.array(z.object({
+    id: z.number().int().positive(),
+    locationId: z.number().int().positive(),
+  })).min(1),
 });
+
+const statusSchema = z.object({
+  status: z.enum(STATUSES),
+  lines: z.array(z.object({
+    id: z.number().int().positive(),
+    locationId: z.number().int().positive(),
+  })).optional(),
+});
+
+// ── shared stock mutation for "done" ──────────────────────────────
+async function applyDeliveryDone(
+  id: number,
+  deliveryLines: { id: number; productId: number; qty: number }[],
+  lines: { id: number; locationId: number }[],
+  reference: string,
+) {
+  const lineIds = new Set(deliveryLines.map((l) => l.id));
+  for (const l of lines) {
+    if (!lineIds.has(l.id)) throw new Error(`Line ${l.id} does not belong to this delivery`);
+  }
+
+  // stock check
+  const insufficient: { productId: number; locationId: number; required: number; available: number }[] = [];
+  for (const line of lines) {
+    const dl = deliveryLines.find((l) => l.id === line.id)!;
+    const stockItem = await prisma.stockItem.findUnique({
+      where: { productId_locationId: { productId: dl.productId, locationId: line.locationId } },
+    });
+    const available = stockItem?.quantity ?? 0;
+    if (available < dl.qty) insufficient.push({ productId: dl.productId, locationId: line.locationId, required: dl.qty, available });
+  }
+  if (insufficient.length > 0) {
+    const err = new Error('Insufficient stock') as Error & { insufficientLines: typeof insufficient };
+    err.insufficientLines = insufficient;
+    throw err;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const line of lines) {
+      const dl = deliveryLines.find((l) => l.id === line.id)!;
+      await tx.stockItem.update({
+        where: { productId_locationId: { productId: dl.productId, locationId: line.locationId } },
+        data: { quantity: { decrement: dl.qty } },
+      });
+      await tx.stockMove.create({
+        data: { productId: dl.productId, fromLocation: line.locationId, quantity: dl.qty, reason: `Delivery #${reference}` },
+      });
+    }
+    await tx.delivery.update({ where: { id }, data: { status: 'done', shippedAt: new Date() } });
+  });
+}
 
 // GET /deliveries
 router.get('/', async (_req: Request, res: Response) => {
@@ -51,107 +102,81 @@ router.get('/:id', async (req: Request, res: Response) => {
   res.json(delivery);
 });
 
-// POST /deliveries — create draft
+// POST /deliveries
 router.post('/', async (req: Request, res: Response) => {
   const parsed = createDeliverySchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ errors: parsed.error.flatten().fieldErrors }); return; }
 
   const { reference, customerId, createdById, lines } = parsed.data;
-
   const existing = await prisma.delivery.findUnique({ where: { reference } });
   if (existing) { res.status(409).json({ error: 'Reference already exists' }); return; }
 
   const delivery = await prisma.delivery.create({
-    data: {
-      reference,
-      customerId,
-      createdById,
-      status: 'draft',
-      deliveryLines: { create: lines },
-    },
+    data: { reference, customerId, createdById, status: 'draft', deliveryLines: { create: lines } },
     include: { deliveryLines: true },
   });
   res.status(201).json(delivery);
 });
 
-// POST /deliveries/:id/validate — check stock, decrement, create moves
-router.post('/:id/validate', async (req: Request, res: Response) => {
+// POST /deliveries/:id/status
+router.post('/:id/status', async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-
-  const parsed = validateDeliverySchema.safeParse(req.body);
+  const parsed = statusSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ errors: parsed.error.flatten().fieldErrors }); return; }
 
-  const delivery = await prisma.delivery.findUnique({
-    where: { id },
-    include: { deliveryLines: true },
-  });
+  const delivery = await prisma.delivery.findUnique({ where: { id }, include: { deliveryLines: true } });
   if (!delivery) { res.status(404).json({ error: 'Delivery not found' }); return; }
-  if (delivery.status !== 'draft') { res.status(409).json({ error: 'Delivery already validated' }); return; }
 
-  const { lines } = parsed.data;
+  const { status, lines } = parsed.data;
 
-  // verify all line ids belong to this delivery
-  const deliveryLineIds = new Set(delivery.deliveryLines.map((l: { id: number }) => l.id));
-  for (const l of lines) {
-    if (!deliveryLineIds.has(l.id)) {
-      res.status(400).json({ error: `Line ${l.id} does not belong to this delivery` });
-      return;
-    }
+  if (delivery.status === 'done' && status === 'draft') {
+    res.status(409).json({ error: 'Cannot revert a completed delivery to draft' }); return;
   }
+  if (delivery.status === status) { res.json(delivery); return; }
 
-  // stock check before transaction
-  const insufficientLines: { productId: number; locationId: number; required: number; available: number }[] = [];
-
-  for (const line of lines) {
-    const deliveryLine = delivery.deliveryLines.find((l: { id: number }) => l.id === line.id)!;
-    const stockItem = await prisma.stockItem.findUnique({
-      where: { productId_locationId: { productId: deliveryLine.productId, locationId: line.locationId } },
-    });
-    const available = stockItem?.quantity ?? 0;
-    if (available < deliveryLine.qty) {
-      insufficientLines.push({
-        productId: deliveryLine.productId,
-        locationId: line.locationId,
-        required: deliveryLine.qty,
-        available,
-      });
+  if (status === 'done') {
+    if (!lines?.length) { res.status(400).json({ error: 'lines required when transitioning to done' }); return; }
+    try {
+      await applyDeliveryDone(id, delivery.deliveryLines as never, lines, delivery.reference);
+    } catch (e: unknown) {
+      const err = e as Error & { insufficientLines?: unknown[] };
+      if (err.insufficientLines) {
+        res.status(422).json({ error: err.message, insufficientLines: err.insufficientLines }); return;
+      }
+      res.status(400).json({ error: err.message }); return;
     }
+  } else {
+    await prisma.delivery.update({ where: { id }, data: { status } });
   }
-
-  if (insufficientLines.length > 0) {
-    res.status(422).json({ error: 'Insufficient stock', insufficientLines });
-    return;
-  }
-
-  await prisma.$transaction(async (tx: typeof prisma) => {
-    for (const line of lines) {
-      const deliveryLine = delivery.deliveryLines.find((l: { id: number }) => l.id === line.id)!;
-
-      await tx.stockItem.update({
-        where: { productId_locationId: { productId: deliveryLine.productId, locationId: line.locationId } },
-        data: { quantity: { decrement: deliveryLine.qty } },
-      });
-
-      await tx.stockMove.create({
-        data: {
-          productId: deliveryLine.productId,
-          fromLocation: line.locationId,
-          quantity: deliveryLine.qty,
-          reason: `Delivery #${delivery.reference}`,
-        },
-      });
-    }
-
-    await tx.delivery.update({
-      where: { id },
-      data: { status: 'done', shippedAt: new Date() },
-    });
-  });
 
   const updated = await prisma.delivery.findUnique({
     where: { id },
-    include: { deliveryLines: true },
+    include: { createdBy: { select: { id: true, name: true } }, deliveryLines: { include: { product: { select: { id: true, sku: true, name: true } } } } },
   });
+  res.json(updated);
+});
+
+// POST /deliveries/:id/validate — shortcut to done
+router.post('/:id/validate', async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const parsed = validateDeliverySchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ errors: parsed.error.flatten().fieldErrors }); return; }
+
+  const delivery = await prisma.delivery.findUnique({ where: { id }, include: { deliveryLines: true } });
+  if (!delivery) { res.status(404).json({ error: 'Delivery not found' }); return; }
+  if (delivery.status === 'done') { res.status(409).json({ error: 'Delivery already validated' }); return; }
+
+  try {
+    await applyDeliveryDone(id, delivery.deliveryLines as never, parsed.data.lines, delivery.reference);
+  } catch (e: unknown) {
+    const err = e as Error & { insufficientLines?: unknown[] };
+    if (err.insufficientLines) {
+      res.status(422).json({ error: err.message, insufficientLines: err.insufficientLines }); return;
+    }
+    res.status(400).json({ error: err.message }); return;
+  }
+
+  const updated = await prisma.delivery.findUnique({ where: { id }, include: { deliveryLines: true } });
   res.json(updated);
 });
 
