@@ -1,19 +1,26 @@
+import { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useApi } from '../hooks/useApi';
-import { ApiErr } from '../components/ui';
+import { ApiErr, selectCls } from '../components/ui';
 
-interface Product { id: number; reorderQty: number; }
+// ── Types ──────────────────────────────────────────────────────────
 interface StockItem {
   quantity: number;
   product: { id: number; name: string; sku: string; reorderThreshold: number | null };
+  location: { id: number; warehouse: { id: number; name: string } };
 }
-interface Receipt { status: string; }
-interface Delivery { status: string; }
+interface Receipt  { id: number; status: string; reference: string; }
+interface Delivery { id: number; status: string; reference: string; }
+interface Transfer { id: number; }
+interface Adjustment { id: number; }
+interface Warehouse { id: number; name: string; }
 
-function KpiCard({
-  label, value, sub, accent,
-}: {
-  label: string; value: number | string; sub?: string; accent?: 'green' | 'yellow' | 'red' | 'blue';
+type DocType = 'all' | 'receipts' | 'deliveries' | 'transfers' | 'adjustments';
+
+// ── KPI card ───────────────────────────────────────────────────────
+function KpiCard({ label, value, sub, accent }: {
+  label: string; value: number | string; sub?: string;
+  accent?: 'green' | 'yellow' | 'red' | 'blue';
 }) {
   const colors: Record<string, string> = {
     blue:   'border-blue-500/30 bg-blue-500/5',
@@ -25,35 +32,93 @@ function KpiCard({
     blue: 'text-blue-400', green: 'text-green-400',
     yellow: 'text-yellow-400', red: 'text-red-400',
   };
-  const scheme = accent ?? 'blue';
+  const s = accent ?? 'blue';
   return (
-    <div className={`rounded-xl border p-5 flex flex-col gap-2 ${colors[scheme]}`}>
+    <div className={`rounded-xl border p-5 flex flex-col gap-2 ${colors[s]}`}>
       <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</span>
-      <span className={`text-4xl font-bold tabular-nums ${valueColors[scheme]}`}>{value}</span>
+      <span className={`text-4xl font-bold tabular-nums ${valueColors[s]}`}>{value}</span>
       {sub && <span className="text-xs text-slate-500">{sub}</span>}
     </div>
   );
 }
 
+// ── Page ───────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { token, user } = useAuth();
 
-  const { data: products,  error: pErr,  loading: pLoad  } = useApi<Product[]>('/products', token);
-  const { data: stock,     error: sErr,  loading: sLoad  } = useApi<StockItem[]>('/products/stock', token);
-  const { data: receipts,  error: rErr,  loading: rLoad  } = useApi<Receipt[]>('/receipts', token);
-  const { data: deliveries,error: dErr,  loading: dLoad  } = useApi<Delivery[]>('/deliveries', token);
+  const { data: stock,       error: sErr, loading: sLoad } = useApi<StockItem[]>('/products/stock', token);
+  const { data: receipts,    error: rErr, loading: rLoad } = useApi<Receipt[]>('/receipts', token);
+  const { data: deliveries,  error: dErr, loading: dLoad } = useApi<Delivery[]>('/deliveries', token);
+  const { data: transfers,   error: tErr, loading: tLoad } = useApi<Transfer[]>('/transfers', token);
+  const { data: adjustments, error: aErr, loading: aLoad } = useApi<Adjustment[]>('/adjustments', token);
+  const { data: warehouses,  error: wErr, loading: wLoad } = useApi<Warehouse[]>('/warehouses', token);
 
-  const loading = pLoad || sLoad || rLoad || dLoad;
-  const errors  = [pErr, sErr, rErr, dErr].filter(Boolean);
+  const loading = sLoad || rLoad || dLoad || tLoad || aLoad || wLoad;
+  const errors  = [sErr, rErr, dErr, tErr, aErr, wErr].filter(Boolean);
 
-  const totalProducts  = products?.length ?? 0;
-  const lowStockItems  = stock?.filter((s) => {
-    const threshold = s.product.reorderThreshold ?? 10;
-    return s.quantity < threshold;
-  }) ?? [];
-  const lowStock       = lowStockItems.length;
-  const pendingReceipts   = receipts?.filter((r) => r.status === 'draft').length ?? 0;
-  const pendingDeliveries = deliveries?.filter((d) => d.status === 'draft').length ?? 0;
+  // ── Filter state ──────────────────────────────────────────────
+  const [docType, setDocType]     = useState<DocType>('all');
+  const [warehouseId, setWHId]    = useState('');
+
+  const hasFilters = docType !== 'all' || warehouseId !== '';
+
+  // ── Filtered stock (warehouse scope) ──────────────────────────
+  const filteredStock = useMemo(() => {
+    if (!stock) return [];
+    if (!warehouseId) return stock;
+    return stock.filter((s) => s.location.warehouse.id === Number(warehouseId));
+  }, [stock, warehouseId]);
+
+  const lowStockItems = useMemo(() =>
+    filteredStock.filter((s) => s.quantity < (s.product.reorderThreshold ?? 10)),
+    [filteredStock]
+  );
+
+  // ── KPI values (document type scope) ─────────────────────────
+  const pendingReceipts   = (receipts   ?? []).filter((r) => r.status === 'draft').length;
+  const pendingDeliveries = (deliveries ?? []).filter((d) => d.status === 'draft').length;
+  const totalTransfers    = transfers?.length   ?? 0;
+  const totalAdjustments  = adjustments?.length ?? 0;
+
+  // Which KPI cards to show based on docType filter
+  type KpiDef = { label: string; value: number; sub: string; accent: 'green'|'yellow'|'red'|'blue' };
+  const kpis = useMemo((): KpiDef[] => {
+    const stockCard: KpiDef = {
+      label: 'Low Stock', value: lowStockItems.length,
+      sub: warehouseId ? `in ${warehouses?.find((w) => w.id === Number(warehouseId))?.name}` : 'below reorder threshold',
+      accent: lowStockItems.length > 0 ? 'red' : 'green',
+    };
+
+    if (docType === 'receipts')
+      return [
+        stockCard,
+        { label: 'Pending Receipts', value: pendingReceipts, sub: 'awaiting validation', accent: pendingReceipts > 0 ? 'yellow' : 'green' },
+      ];
+    if (docType === 'deliveries')
+      return [
+        stockCard,
+        { label: 'Pending Deliveries', value: pendingDeliveries, sub: 'awaiting validation', accent: pendingDeliveries > 0 ? 'yellow' : 'green' },
+      ];
+    if (docType === 'transfers')
+      return [
+        stockCard,
+        { label: 'Transfers', value: totalTransfers, sub: 'total recorded', accent: 'blue' },
+      ];
+    if (docType === 'adjustments')
+      return [
+        stockCard,
+        { label: 'Adjustments', value: totalAdjustments, sub: 'total recorded', accent: 'blue' },
+      ];
+
+    // all
+    return [
+      { label: 'Low Stock', value: lowStockItems.length, sub: stockCard.sub, accent: stockCard.accent },
+      { label: 'Pending Receipts',   value: pendingReceipts,   sub: 'awaiting validation', accent: pendingReceipts   > 0 ? 'yellow' : 'green' },
+      { label: 'Pending Deliveries', value: pendingDeliveries, sub: 'awaiting validation', accent: pendingDeliveries > 0 ? 'yellow' : 'green' },
+      { label: 'Transfers',    value: totalTransfers,   sub: 'total recorded', accent: 'blue' },
+      { label: 'Adjustments',  value: totalAdjustments, sub: 'total recorded', accent: 'blue' },
+    ];
+  }, [docType, lowStockItems, pendingReceipts, pendingDeliveries, totalTransfers, totalAdjustments, warehouseId, warehouses]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -64,19 +129,46 @@ export default function Dashboard() {
 
       {errors.map((e) => <ApiErr key={e} msg={e!} />)}
 
-      {/* Low-stock alert banner */}
+      {/* ── Filters ── */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <select value={docType} onChange={(e) => setDocType(e.target.value as DocType)}
+          className={`${selectCls()} w-52`}>
+          <option value="all">All document types</option>
+          <option value="receipts">Receipts</option>
+          <option value="deliveries">Deliveries</option>
+          <option value="transfers">Transfers</option>
+          <option value="adjustments">Adjustments</option>
+        </select>
+
+        <select value={warehouseId} onChange={(e) => setWHId(e.target.value)}
+          className={`${selectCls()} w-52`}>
+          <option value="">All warehouses</option>
+          {(warehouses ?? []).map((w) => (
+            <option key={w.id} value={w.id}>{w.name}</option>
+          ))}
+        </select>
+
+        {hasFilters && (
+          <button onClick={() => { setDocType('all'); setWHId(''); }}
+            className="text-xs text-slate-400 hover:text-white transition-colors px-2">
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {/* ── Low-stock alert banner ── */}
       {!loading && lowStockItems.length > 0 && (
         <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 flex flex-col gap-2">
           <p className="text-sm font-medium text-yellow-300">
-            ⚠️ {lowStockItems.length} product{lowStockItems.length !== 1 ? 's are' : ' is'} low on stock or out of stock
+            ⚠️ {lowStockItems.length} product{lowStockItems.length !== 1 ? 's are' : ' is'} low on stock
+            {warehouseId && warehouses && ` in ${warehouses.find((w) => w.id === Number(warehouseId))?.name}`}
           </p>
           <ul className="flex flex-wrap gap-2">
             {lowStockItems.map((s) => (
-              <li key={s.product.id}
-                className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium
-                  border-yellow-500/30 bg-yellow-500/10 text-yellow-200">
+              <li key={`${s.product.id}-${s.location.id}`}
+                className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium border-yellow-500/30 bg-yellow-500/10 text-yellow-200">
                 <span className={s.quantity === 0 ? 'text-red-400' : 'text-yellow-400'}>
-                  {s.quantity === 0 ? '✕' : `${s.quantity}`}
+                  {s.quantity === 0 ? '✕' : s.quantity}
                 </span>
                 {s.product.name}
                 <span className="text-yellow-600 font-mono">{s.product.sku}</span>
@@ -86,6 +178,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ── KPIs ── */}
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
@@ -93,11 +186,10 @@ export default function Dashboard() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard label="Total Products"     value={totalProducts}  sub="in catalogue"           accent="blue"   />
-          <KpiCard label="Low Stock"          value={lowStock}       sub="below reorder threshold"   accent={lowStock > 0 ? 'red' : 'green'} />
-          <KpiCard label="Pending Receipts"   value={pendingReceipts}   sub="awaiting validation" accent={pendingReceipts > 0 ? 'yellow' : 'green'} />
-          <KpiCard label="Pending Deliveries" value={pendingDeliveries} sub="awaiting validation" accent={pendingDeliveries > 0 ? 'yellow' : 'green'} />
+        <div className={`grid gap-4 ${kpis.length <= 2 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-5'}`}>
+          {kpis.map((k) => (
+            <KpiCard key={k.label} label={k.label} value={k.value} sub={k.sub} accent={k.accent} />
+          ))}
         </div>
       )}
     </div>
