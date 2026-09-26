@@ -4,6 +4,9 @@ import authRouter from './routes/auth';
 import productsRouter from './routes/products';
 import warehousesRouter from './routes/warehouses';
 import locationsRouter from './routes/locations';
+import receiptsRouter from './routes/receipts';
+import deliveriesRouter from './routes/deliveries';
+import stockmovesRouter from './routes/stockmoves';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -18,6 +21,9 @@ app.use('/auth', authRouter);
 app.use('/products', productsRouter);
 app.use('/warehouses', warehousesRouter);
 app.use('/locations', locationsRouter);
+app.use('/receipts', receiptsRouter);
+app.use('/deliveries', deliveriesRouter);
+app.use('/stockmoves', stockmovesRouter);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
