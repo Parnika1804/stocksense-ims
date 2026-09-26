@@ -12,6 +12,7 @@ import MoveHistory from './pages/MoveHistory';
 import Settings from './pages/Settings';
 import Adjustments from './pages/Adjustments';
 import Transfers from './pages/Transfers';
+import Profile from './pages/Profile';
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="adjustments" element={<Adjustments />} />
             <Route path="transfers" element={<Transfers />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="profile" element={<Profile />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
