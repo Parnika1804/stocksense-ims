@@ -1,18 +1,19 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { z } from 'zod';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch, ApiError } from '../lib/api';
 import { useApi } from '../hooks/useApi';
-import { Field, inputCls, Btn, Modal, Table, Td, EmptyRow, ApiErr } from '../components/ui';
+import { Field, inputCls, selectCls, Btn, Modal, Table, Td, EmptyRow, ApiErr } from '../components/ui';
 
 interface Product {
   id: number; sku: string; name: string; description: string | null;
-  unit: string; reorderQty: number; reorderThreshold: number | null;
+  category: string; unit: string; reorderQty: number; reorderThreshold: number | null;
 }
 
 const schema = z.object({
   sku: z.string().min(1, 'SKU is required'),
   name: z.string().min(1, 'Name is required'),
+  category: z.string().min(1, 'Category is required'),
   description: z.string().optional(),
   unit: z.string().min(1, 'Unit is required'),
   reorderQty: z.coerce.number().int().min(0),
@@ -21,7 +22,7 @@ const schema = z.object({
 type Fields = z.infer<typeof schema>;
 type FErr = Partial<Record<keyof Fields, string>>;
 
-const empty: Fields = { sku: '', name: '', description: '', unit: 'pcs', reorderQty: 0, reorderThreshold: '' };
+const empty: Fields = { sku: '', name: '', category: '', description: '', unit: 'pcs', reorderQty: 0, reorderThreshold: '' };
 
 export default function Products() {
   const { token } = useAuth();
@@ -29,6 +30,7 @@ export default function Products() {
 
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [fields, setFields] = useState<Fields>(empty);
   const [fErr, setFErr] = useState<FErr>({});
   const [apiErr, setApiErr] = useState('');
@@ -41,11 +43,16 @@ export default function Products() {
   }
 
   const needle = query.trim().toLowerCase();
-  const visible = needle
-    ? (products ?? []).filter(
-        (p) => p.name.toLowerCase().includes(needle) || p.sku.toLowerCase().includes(needle)
-      )
-    : (products ?? []);
+  const categories = useMemo(() =>
+    [...new Set((products ?? []).map((p) => p.category))].sort(),
+    [products]
+  );
+  const visible = useMemo(() => {
+    let list = products ?? [];
+    if (needle) list = list.filter((p) => p.name.toLowerCase().includes(needle) || p.sku.toLowerCase().includes(needle));
+    if (categoryFilter) list = list.filter((p) => p.category === categoryFilter);
+    return list;
+  }, [products, needle, categoryFilter]);
 
   function openForm() { setFields(empty); setFErr({}); setApiErr(''); setShowForm(true); }
 
@@ -83,18 +90,28 @@ export default function Products() {
         <Btn onClick={openForm}>+ New Product</Btn>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <span className="absolute inset-y-0 left-3 flex items-center text-slate-500 pointer-events-none">
-          🔍
-        </span>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name or SKU…"
-          className="w-full rounded-lg border border-slate-600 bg-slate-700 pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition"
-        />
+      {/* Search + filters */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="relative">
+          <span className="absolute inset-y-0 left-3 flex items-center text-slate-500 pointer-events-none">🔍</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by name or SKU…"
+            className="w-64 rounded-lg border border-slate-600 bg-slate-700 pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition"
+          />
+        </div>
+        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className={`${selectCls()} w-48`}>
+          <option value="">All categories</option>
+          {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        {(query || categoryFilter) && (
+          <button onClick={() => { setQuery(''); setCategoryFilter(''); }}
+            className="text-xs text-slate-400 hover:text-white transition-colors px-2">
+            Clear filters
+          </button>
+        )}
       </div>
 
       {error && <ApiErr msg={error} />}
@@ -102,13 +119,14 @@ export default function Products() {
       {loading ? (
         <p className="text-slate-400 text-sm">Loading…</p>
       ) : (
-        <Table heads={['SKU', 'Name', 'Description', 'Unit', 'Reorder Qty', 'Alert Threshold']}>
+        <Table heads={['SKU', 'Name', 'Category', 'Description', 'Unit', 'Reorder Qty', 'Alert Threshold']}>
           {!visible.length
-            ? <EmptyRow cols={6} msg={query ? 'No products match your search' : 'No products yet'} />
+            ? <EmptyRow cols={7} msg={(query || categoryFilter) ? 'No products match your filters' : 'No products yet'} />
             : visible.map((p) => (
               <tr key={p.id} className="hover:bg-slate-700/30">
                 <Td><span className="font-mono text-xs text-slate-300">{p.sku}</span></Td>
                 <Td className="font-medium text-white">{p.name}</Td>
+                <Td><span className="inline-block rounded-full bg-slate-700 px-2.5 py-0.5 text-xs text-slate-300">{p.category}</span></Td>
                 <Td className="text-slate-400">{p.description ?? '—'}</Td>
                 <Td>{p.unit}</Td>
                 <Td>{p.reorderQty}</Td>
@@ -133,6 +151,18 @@ export default function Products() {
             </div>
             <Field label="Name" error={fErr.name}>
               <input value={fields.name} onChange={(e) => set('name', e.target.value)} className={inputCls(!!fErr.name)} placeholder="Product name" />
+            </Field>
+            <Field label="Category" error={fErr.category}>
+              <input
+                value={fields.category}
+                onChange={(e) => set('category', e.target.value)}
+                className={inputCls(!!fErr.category)}
+                placeholder="e.g. Electronics, Raw Materials…"
+                list="category-suggestions"
+              />
+              <datalist id="category-suggestions">
+                {categories.map((c) => <option key={c} value={c} />)}
+              </datalist>
             </Field>
             <Field label="Description" error={fErr.description}>
               <input value={fields.description} onChange={(e) => set('description', e.target.value)} className={inputCls(false)} placeholder="Optional" />

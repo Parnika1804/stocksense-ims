@@ -53,6 +53,7 @@ model Product {
   id          Int      @id @default(autoincrement())
   sku         String   @unique
   name        String
+  category    String   @default("General")
   description String?
   unit        String   @default("pcs")
   reorderQty        Int      @default(0)

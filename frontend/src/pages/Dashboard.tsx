@@ -6,7 +6,7 @@ import { ApiErr, selectCls } from '../components/ui';
 // ── Types ──────────────────────────────────────────────────────────
 interface StockItem {
   quantity: number;
-  product: { id: number; name: string; sku: string; reorderThreshold: number | null };
+  product: { id: number; name: string; sku: string; category: string; reorderThreshold: number | null };
   location: { id: number; warehouse: { id: number; name: string } };
 }
 interface Receipt  { id: number; status: string; reference: string; }
@@ -57,17 +57,27 @@ export default function Dashboard() {
   const errors  = [sErr, rErr, dErr, tErr, aErr, wErr].filter(Boolean);
 
   // ── Filter state ──────────────────────────────────────────────
-  const [docType, setDocType]     = useState<DocType>('all');
-  const [warehouseId, setWHId]    = useState('');
+  const [docType, setDocType]  = useState<DocType>('all');
+  const [warehouseId, setWHId] = useState('');
+  const [category, setCategory] = useState('');
 
-  const hasFilters = docType !== 'all' || warehouseId !== '';
+  const hasFilters = docType !== 'all' || warehouseId !== '' || category !== '';
+
+  // Categories derived from stock data
+  const categories = useMemo(() =>
+    [...new Set((stock ?? []).map((s) => s.product.category))].sort(),
+    [stock]
+  );
 
   // ── Filtered stock (warehouse scope) ──────────────────────────
   const filteredStock = useMemo(() => {
     if (!stock) return [];
-    if (!warehouseId) return stock;
-    return stock.filter((s) => s.location.warehouse.id === Number(warehouseId));
-  }, [stock, warehouseId]);
+    return stock.filter((s) => {
+      if (warehouseId && s.location.warehouse.id !== Number(warehouseId)) return false;
+      if (category && s.product.category !== category) return false;
+      return true;
+    });
+  }, [stock, warehouseId, category]);
 
   const lowStockItems = useMemo(() =>
     filteredStock.filter((s) => s.quantity < (s.product.reorderThreshold ?? 10)),
@@ -85,7 +95,11 @@ export default function Dashboard() {
   const kpis = useMemo((): KpiDef[] => {
     const stockCard: KpiDef = {
       label: 'Low Stock', value: lowStockItems.length,
-      sub: warehouseId ? `in ${warehouses?.find((w) => w.id === Number(warehouseId))?.name}` : 'below reorder threshold',
+      sub: [
+        warehouseId ? `in ${warehouses?.find((w) => w.id === Number(warehouseId))?.name}` : '',
+        category ? `cat: ${category}` : '',
+        !warehouseId && !category ? 'below reorder threshold' : '',
+      ].filter(Boolean).join(' · '),
       accent: lowStockItems.length > 0 ? 'red' : 'green',
     };
 
@@ -118,7 +132,7 @@ export default function Dashboard() {
       { label: 'Transfers',    value: totalTransfers,   sub: 'total recorded', accent: 'blue' },
       { label: 'Adjustments',  value: totalAdjustments, sub: 'total recorded', accent: 'blue' },
     ];
-  }, [docType, lowStockItems, pendingReceipts, pendingDeliveries, totalTransfers, totalAdjustments, warehouseId, warehouses]);
+  }, [docType, lowStockItems, pendingReceipts, pendingDeliveries, totalTransfers, totalAdjustments, warehouseId, category, warehouses]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -141,15 +155,21 @@ export default function Dashboard() {
         </select>
 
         <select value={warehouseId} onChange={(e) => setWHId(e.target.value)}
-          className={`${selectCls()} w-52`}>
+          className={`${selectCls()} w-48`}>
           <option value="">All warehouses</option>
           {(warehouses ?? []).map((w) => (
             <option key={w.id} value={w.id}>{w.name}</option>
           ))}
         </select>
 
+        <select value={category} onChange={(e) => setCategory(e.target.value)}
+          className={`${selectCls()} w-48`}>
+          <option value="">All categories</option>
+          {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+
         {hasFilters && (
-          <button onClick={() => { setDocType('all'); setWHId(''); }}
+          <button onClick={() => { setDocType('all'); setWHId(''); setCategory(''); }}
             className="text-xs text-slate-400 hover:text-white transition-colors px-2">
             Clear filters
           </button>
@@ -162,6 +182,7 @@ export default function Dashboard() {
           <p className="text-sm font-medium text-yellow-300">
             ⚠️ {lowStockItems.length} product{lowStockItems.length !== 1 ? 's are' : ' is'} low on stock
             {warehouseId && warehouses && ` in ${warehouses.find((w) => w.id === Number(warehouseId))?.name}`}
+            {category && ` · category: ${category}`}
           </p>
           <ul className="flex flex-wrap gap-2">
             {lowStockItems.map((s) => (
