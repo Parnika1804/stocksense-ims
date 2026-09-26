@@ -8,13 +8,14 @@ import { STATUSES, type DocStatus } from '../components/ui';
 interface StockItem {
   quantity: number;
   product: { id: number; name: string; sku: string; category: string; reorderThreshold: number | null };
-  location: { id: number; warehouse: { id: number; name: string } };
+  location: { id: number; name: string; warehouse: { id: number; name: string } };
 }
 interface Receipt     { id: number; status: string; reference: string; }
 interface Delivery    { id: number; status: string; reference: string; }
 interface Transfer    { id: number; status: string; }
 interface Adjustment  { id: number; }
 interface Warehouse   { id: number; name: string; }
+interface Location    { id: number; name: string; warehouseId: number; }
 
 type DocType = 'all' | 'receipts' | 'deliveries' | 'transfers' | 'adjustments';
 type StatusFilter = DocStatus | 'all';
@@ -54,17 +55,28 @@ export default function Dashboard() {
   const { data: transfers,   error: tErr, loading: tLoad } = useApi<Transfer[]>('/transfers', token);
   const { data: adjustments, error: aErr, loading: aLoad } = useApi<Adjustment[]>('/adjustments', token);
   const { data: warehouses,  error: wErr, loading: wLoad } = useApi<Warehouse[]>('/warehouses', token);
+  const { data: locations,   loading: lLoad } = useApi<Location[]>('/locations', token);
 
-  const loading = sLoad || rLoad || dLoad || tLoad || aLoad || wLoad;
+  const loading = sLoad || rLoad || dLoad || tLoad || aLoad || wLoad || lLoad;
   const errors  = [sErr, rErr, dErr, tErr, aErr, wErr].filter(Boolean);
 
   // ── Filter state ───────────────────────────────────────────────
-  const [docType,      setDocType]    = useState<DocType>('all');
-  const [warehouseId,  setWHId]       = useState('');
-  const [category,     setCategory]   = useState('');
+  const [docType,      setDocType]      = useState<DocType>('all');
+  const [warehouseId,  setWHId]         = useState('');
+  const [locationId,   setLocationId]   = useState('');
+  const [category,     setCategory]     = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  const hasFilters = docType !== 'all' || warehouseId !== '' || category !== '' || statusFilter !== 'all';
+  const hasFilters = docType !== 'all' || warehouseId !== '' || locationId !== '' || category !== '' || statusFilter !== 'all';
+
+  // When warehouse changes, reset location
+  function handleWarehouseChange(v: string) { setWHId(v); setLocationId(''); }
+
+  // Locations belonging to the selected warehouse
+  const warehouseLocations = useMemo(() =>
+    warehouseId ? (locations ?? []).filter((l) => l.warehouseId === Number(warehouseId)) : [],
+    [locations, warehouseId]
+  );
 
   // ── Derived: categories from stock ────────────────────────────
   const categories = useMemo(() =>
@@ -77,10 +89,11 @@ export default function Dashboard() {
     if (!stock) return [];
     return stock.filter((s) => {
       if (warehouseId && s.location.warehouse.id !== Number(warehouseId)) return false;
-      if (category && s.product.category !== category) return false;
+      if (locationId  && s.location.id !== Number(locationId))            return false;
+      if (category    && s.product.category !== category)                 return false;
       return true;
     });
-  }, [stock, warehouseId, category]);
+  }, [stock, warehouseId, locationId, category]);
 
   const lowStockItems = useMemo(() =>
     filteredStock.filter((s) => s.quantity < (s.product.reorderThreshold ?? 10)),
@@ -130,8 +143,9 @@ export default function Dashboard() {
       value: lowStockItems.length,
       sub: [
         warehouseId ? `in ${warehouses?.find((w) => w.id === Number(warehouseId))?.name}` : '',
+        locationId  ? `loc: ${warehouseLocations.find((l) => l.id === Number(locationId))?.name}` : '',
         category    ? `cat: ${category}` : '',
-        !warehouseId && !category ? 'below reorder threshold' : '',
+        !warehouseId && !locationId && !category ? 'below reorder threshold' : '',
       ].filter(Boolean).join(' · '),
       accent: lowStockItems.length > 0 ? 'red' : 'green',
     };
@@ -151,7 +165,7 @@ export default function Dashboard() {
     return [stockCard, rCard, dCard, tCard, sCard, aCard];
   }, [
     docType, lowStockItems, receiptCount, deliveryCount, transferCount,
-    scheduledTransfers, totalAdjustments, warehouseId, category, warehouses,
+    scheduledTransfers, totalAdjustments, warehouseId, locationId, category, warehouses, warehouseLocations,
     receiptLabel, deliveryLabel, transferLabel, receiptSub, deliverySub, transferSub,
   ]);
 
@@ -183,13 +197,23 @@ export default function Dashboard() {
           ))}
         </select>
 
-        <select value={warehouseId} onChange={(e) => setWHId(e.target.value)}
+        <select value={warehouseId} onChange={(e) => handleWarehouseChange(e.target.value)}
           className={`${selectCls()} w-44`}>
           <option value="">All warehouses</option>
           {(warehouses ?? []).map((w) => (
             <option key={w.id} value={w.id}>{w.name}</option>
           ))}
         </select>
+
+        {warehouseId && (
+          <select value={locationId} onChange={(e) => setLocationId(e.target.value)}
+            className={`${selectCls()} w-44`}>
+            <option value="">All locations</option>
+            {warehouseLocations.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+        )}
 
         <select value={category} onChange={(e) => setCategory(e.target.value)}
           className={`${selectCls()} w-44`}>
@@ -199,7 +223,7 @@ export default function Dashboard() {
 
         {hasFilters && (
           <button
-            onClick={() => { setDocType('all'); setWHId(''); setCategory(''); setStatusFilter('all'); }}
+            onClick={() => { setDocType('all'); setWHId(''); setLocationId(''); setCategory(''); setStatusFilter('all'); }}
             className="text-xs text-slate-400 hover:text-white transition-colors px-2">
             Clear filters
           </button>
@@ -212,6 +236,7 @@ export default function Dashboard() {
           <p className="text-sm font-medium text-yellow-300">
             ⚠️ {lowStockItems.length} product{lowStockItems.length !== 1 ? 's are' : ' is'} low on stock
             {warehouseId && warehouses && ` in ${warehouses.find((w) => w.id === Number(warehouseId))?.name}`}
+            {locationId && warehouseLocations.length > 0 && ` · ${warehouseLocations.find((l) => l.id === Number(locationId))?.name}`}
             {category && ` · category: ${category}`}
           </p>
           <ul className="flex flex-wrap gap-2">
