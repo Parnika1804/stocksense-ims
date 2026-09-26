@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { z } from 'zod';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch, ApiError } from '../lib/api';
@@ -15,6 +15,8 @@ type FieldErrors = Partial<Record<keyof Fields, string>>;
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const successMessage = (location.state as { message?: string } | null)?.message;
 
   const [fields, setFields] = useState<Fields>({ email: '', password: '' });
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -66,6 +68,12 @@ export default function Login() {
         </div>
 
         <form onSubmit={handleSubmit} noValidate className="bg-slate-800 rounded-xl p-6 flex flex-col gap-5 border border-slate-700">
+          {successMessage && (
+            <div className="rounded-lg bg-green-500/10 border border-green-500/30 px-3 py-2 text-sm text-green-400">
+              {successMessage}
+            </div>
+          )}
+
           {apiError && (
             <div className="rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-2 text-sm text-red-400">
               {apiError}
@@ -102,12 +110,17 @@ export default function Login() {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
 
-          <p className="text-center text-sm text-slate-400">
-            No account?{' '}
-            <Link to="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
-              Sign up
+          <div className="flex items-center justify-between text-sm text-slate-400">
+            <span>
+              No account?{' '}
+              <Link to="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
+                Sign up
+              </Link>
+            </span>
+            <Link to="/forgot-password" className="text-blue-400 hover:text-blue-300 font-medium">
+              Forgot password?
             </Link>
-          </p>
+          </div>
         </form>
       </div>
     </div>

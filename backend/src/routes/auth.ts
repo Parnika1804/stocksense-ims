@@ -15,6 +15,16 @@ const signupSchema = authSchema.extend({
   name: z.string().min(1, 'Name is required'),
 });
 
+const forgotSchema = z.object({
+  email: z.string().email(),
+});
+
+const resetSchema = z.object({
+  email: z.string().email(),
+  otp: z.string().length(6, 'OTP must be 6 digits'),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
 function signToken(userId: number, role: string): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error('JWT_SECRET is not set');
@@ -74,6 +84,70 @@ router.post('/login', async (req: Request, res: Response) => {
     token,
     user: { id: user.id, email: user.email, name: user.name, role: user.role },
   });
+});
+
+// POST /auth/forgot-password — generate OTP, store hashed, return raw OTP (demo mode)
+router.post('/forgot-password', async (req: Request, res: Response) => {
+  const parsed = forgotSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+  // Always respond the same to prevent email enumeration
+  if (!user) {
+    res.json({ message: 'If that email exists, an OTP has been generated.', otp: null });
+    return;
+  }
+
+  const otp = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit
+  const otpHash = await bcrypt.hash(otp, 10);
+  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { otpHash, otpExpiry },
+  });
+
+  // Demo mode: return OTP directly
+  res.json({ message: 'OTP generated (demo mode — no email sent).', otp });
+});
+
+// POST /auth/reset-password — validate OTP, update password
+router.post('/reset-password', async (req: Request, res: Response) => {
+  const parsed = resetSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const { email, otp, newPassword } = parsed.data;
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user || !user.otpHash || !user.otpExpiry) {
+    res.status(400).json({ error: 'Invalid or expired OTP' });
+    return;
+  }
+
+  if (new Date() > user.otpExpiry) {
+    res.status(400).json({ error: 'OTP has expired' });
+    return;
+  }
+
+  const valid = await bcrypt.compare(otp, user.otpHash);
+  if (!valid) {
+    res.status(400).json({ error: 'Invalid OTP' });
+    return;
+  }
+
+  const hashed = await bcrypt.hash(newPassword, 12);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { password: hashed, otpHash: null, otpExpiry: null },
+  });
+
+  res.json({ message: 'Password updated successfully.' });
 });
 
 export default router;
